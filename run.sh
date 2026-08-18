@@ -24,6 +24,29 @@ FRONTEND_LOG="$LOG_DIR/frontend.log"
 
 echo "==> name-me: preparing local run"
 
+# --- make sure uv/npm are actually resolvable ---
+# `./run.sh` runs as a non-interactive shell, which does NOT source
+# ~/.bashrc -- so tools installed via nvm (or anything else only wired up
+# for interactive shells) can be invisible here even though they work fine
+# in your normal terminal. Try loading nvm explicitly before giving up.
+if ! command -v npm >/dev/null 2>&1; then
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  if [ -s "$NVM_DIR/nvm.sh" ]; then
+    # shellcheck disable=SC1091
+    . "$NVM_DIR/nvm.sh"
+  fi
+fi
+
+command -v uv >/dev/null 2>&1 || {
+  echo "ERROR: 'uv' not found on PATH. Install: https://docs.astral.sh/uv/getting-started/installation/"
+  exit 1
+}
+command -v npm >/dev/null 2>&1 || {
+  echo "ERROR: 'npm' not found on PATH (tried loading nvm from \$NVM_DIR too)."
+  echo "       Install Node.js, or if you use nvm, check that \$NVM_DIR is set correctly."
+  exit 1
+}
+
 # --- backend setup ---
 cd "$BACKEND_DIR"
 if [ ! -f .env ]; then
@@ -84,31 +107,50 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo -n "==> waiting for backend"
-for _ in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null 2>&1; then
-    echo " ok"
-    break
-  fi
-  echo -n "."
-  sleep 1
-done
+# wait_for <name> <url> <pid> <log_file> -- polls the URL, but also bails
+# out immediately (with the log tail) if the background process has
+# already died, instead of silently waiting out the full timeout.
+wait_for() {
+  local name="$1" url="$2" pid="$3" log="$4"
+  echo -n "==> waiting for $name"
+  for _ in $(seq 1 30); do
+    if curl -sf "$url" >/dev/null 2>&1; then
+      echo " ok"
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo " FAILED (process exited early)"
+      echo "----- last lines of $log -----"
+      tail -20 "$log" || true
+      echo "-------------------------------"
+      return 1
+    fi
+    echo -n "."
+    sleep 1
+  done
+  echo " FAILED (timed out)"
+  echo "----- last lines of $log -----"
+  tail -20 "$log" || true
+  echo "-------------------------------"
+  return 1
+}
 
-echo -n "==> waiting for frontend"
-for _ in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:$FRONTEND_PORT" >/dev/null 2>&1; then
-    echo " ok"
-    break
-  fi
-  echo -n "."
-  sleep 1
-done
+backend_ok=1
+frontend_ok=1
+wait_for "backend" "http://127.0.0.1:$BACKEND_PORT/api/health" "$BACKEND_PID" "$BACKEND_LOG" || backend_ok=0
+wait_for "frontend" "http://127.0.0.1:$FRONTEND_PORT" "$FRONTEND_PID" "$FRONTEND_LOG" || frontend_ok=0
+
+if [ "$backend_ok" -eq 0 ] || [ "$frontend_ok" -eq 0 ]; then
+  echo ""
+  echo "==> one or more services failed to start -- see logs above. Stopping."
+  exit 1
+fi
 
 echo ""
 echo "======================================================"
 echo " name-me is running"
-echo "   frontend:  http://127.0.0.1:$FRONTEND_PORT"
-echo "   backend:   http://127.0.0.1:$BACKEND_PORT  (interactive docs at /docs)"
+echo "   frontend:  http://127.0.0.1:$FRONTEND_PORT   <- open this one in your browser"
+echo "   backend:   http://127.0.0.1:$BACKEND_PORT  (API only -- interactive docs at /docs)"
 echo "   logs:      $LOG_DIR/"
 echo " Press Ctrl+C to stop both."
 echo "======================================================"
