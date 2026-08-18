@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+backend/.python-version
+
+# Note: backend/src/nameme/artifacts/* is intentionally NOT ignored -- the
+# precomputed corpus + embedder + PCA artifacts are committed on purpose.
+
+# Node
+node_modules/
+dist/
+frontend/.vite/
+
+# Env files (commit the .env.example templates instead)
+.env
+*.env.local
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

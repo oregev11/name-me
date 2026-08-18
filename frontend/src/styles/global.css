@@ -1,0 +1,201 @@
+:root {
+  --bg: #fdfcfb;
+  --surface: #ffffff;
+  --text: #1f1b24;
+  --text-muted: #6b6375;
+  --border: #e5e4e7;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.12);
+  --liked: #d6336c;
+  --shadow: rgba(0, 0, 0, 0.08) 0 4px 16px;
+  --radius: 12px;
+
+  font:
+    16px/1.5 system-ui,
+    "Segoe UI",
+    Arial,
+    sans-serif;
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  margin-top: 0;
+  margin-bottom: 2rem;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+}
+
+.name-input {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.name-input input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.name-input input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.autocomplete-list {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.autocomplete-list button {
+  width: 100%;
+  text-align: right;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.autocomplete-list button:hover {
+  background: var(--accent-soft);
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  min-height: 2.25rem;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  font-weight: 600;
+}
+
+.chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+
+.empty-hint {
+  color: var(--text-muted);
+  margin: 0 0 1.5rem;
+}
+
+.status {
+  color: var(--text-muted);
+}
+
+.status-error {
+  color: #c0392b;
+}
+
+.results {
+  margin-top: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+}
+
+.scatter-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  box-shadow: var(--shadow);
+  font-size: 0.9rem;
+}
+
+.suggestions-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.suggestions-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.suggestion-name {
+  font-weight: 600;
+  flex: 1;
+}
+
+.suggestion-score {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.suggestions-list button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+}
