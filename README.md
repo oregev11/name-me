@@ -14,13 +14,16 @@ pick either one, per search — see [below](#the-two-similarity-models).
 ## Quickstart (one-liners)
 
 ```bash
-# Backend — from backend/
-uv sync && cp .env.example .env && uv run uvicorn nameme.main:app --reload
-# → http://127.0.0.1:8000/docs
+# Run everything (installs deps + creates .env files on first run, then starts both
+# servers; Ctrl+C stops both cleanly) — from the repo root:
+./run.sh
+# → frontend at http://127.0.0.1:5173, backend at http://127.0.0.1:8000/docs
+# RELOAD=1 ./run.sh restarts the backend on code changes, for active dev.
+# BACKEND_PORT=... / FRONTEND_PORT=... override the default ports.
 
-# Frontend — from frontend/, in a second terminal
-npm install && cp .env.example .env && npm run dev
-# → prints a local URL, defaults to talking to the backend above
+# Or run each service by hand, in two terminals:
+cd backend && uv sync && cp .env.example .env && uv run uvicorn nameme.main:app --reload
+cd frontend && npm install && cp .env.example .env && npm run dev
 
 # Rebuild the ML artifacts (only needed after changing the corpus or embedder code) — from backend/
 uv run python scripts/build_corpus.py               # refresh the name corpus

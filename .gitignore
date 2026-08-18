@@ -14,6 +14,9 @@ backend/.python-version
 backend/scripts/.pipeline_status.json
 backend/scripts/pipeline_status.html
 
+# run.sh output
+.run-logs/
+
 # Node
 node_modules/
 dist/
