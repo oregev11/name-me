@@ -1,16 +1,26 @@
 import { Layout } from "./components/Layout";
 import { LikedNameChips } from "./components/LikedNameChips";
+import { ModelToggle } from "./components/ModelToggle";
 import { NameInput } from "./components/NameInput";
 import { ScatterChart } from "./components/ScatterChart";
 import { SuggestionsList } from "./components/SuggestionsList";
 import { useNameSearch } from "./hooks/useNameSearch";
 
 function App() {
-  const { likedNames, result, loading, error, addName, removeName } =
-    useNameSearch();
+  const {
+    likedNames,
+    model,
+    result,
+    loading,
+    error,
+    addName,
+    removeName,
+    setModel,
+  } = useNameSearch();
 
   return (
     <Layout>
+      <ModelToggle value={model} onChange={setModel} disabled={loading} />
       <NameInput onAdd={addName} disabled={loading} />
       <LikedNameChips names={likedNames} onRemove={removeName} />
 
@@ -25,7 +35,14 @@ function App() {
 
       {result && !loading && (
         <section className="results">
-          <ScatterChart liked={result.liked} suggestions={result.suggestions} />
+          {/* Keying on `model` forces a clean remount instead of an
+              interpolated transition -- switching models jumps to an
+              unrelated PCA coordinate space, which is expected. */}
+          <ScatterChart
+            key={model}
+            liked={result.liked}
+            suggestions={result.suggestions}
+          />
           <SuggestionsList suggestions={result.suggestions} onAdd={addName} />
         </section>
       )}

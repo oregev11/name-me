@@ -1,4 +1,8 @@
-import type { AutocompleteResponse, SearchResponse } from "../types/api";
+import type {
+  AutocompleteResponse,
+  ModelId,
+  SearchResponse,
+} from "../types/api";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -18,11 +22,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function searchNames(
   likedNames: string[],
+  model: ModelId,
   topK = 10,
 ): Promise<SearchResponse> {
   return request<SearchResponse>("/api/search", {
     method: "POST",
-    body: JSON.stringify({ liked_names: likedNames, top_k: topK }),
+    body: JSON.stringify({ liked_names: likedNames, top_k: topK, model }),
   });
 }
 

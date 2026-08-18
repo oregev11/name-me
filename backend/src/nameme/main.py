@@ -21,8 +21,7 @@ from nameme.corpus.loader import load_corpus_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
-    app.state.corpus_store = load_corpus_store(ARTIFACTS_DIR, settings.embedder_type)
+    app.state.corpus_store = load_corpus_store(ARTIFACTS_DIR)
     yield
 
 

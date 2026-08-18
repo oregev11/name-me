@@ -12,9 +12,6 @@ ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    embedder_type: str = "ngram_svd"
-    embedder_dim: int = 100
-
     # Comma-separated list of allowed CORS origins, e.g.
     # "http://localhost:5173,https://name-me.vercel.app"
     # Both localhost and 127.0.0.1 are included by default since Vite's dev

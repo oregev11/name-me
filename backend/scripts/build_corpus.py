@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
+from pipeline_status import PipelineStatus
 
 # Pinned to a specific commit (not `main`) so this script is reproducible even
 # if the upstream repo changes format later. See DATA_SOURCE.md for the date
@@ -37,10 +38,13 @@ HEBREW_NAME_RE = re.compile(r"^[א-ת][א-ת \-'\"]*$")
 
 
 def main() -> None:
+    status = PipelineStatus("build_corpus")
+    status.step("fetching CBS/babynamesIL CSV")
     print(f"Fetching {SOURCE_URL}")
     raw = pd.read_csv(SOURCE_URL)
     print(f"Loaded {len(raw)} rows (sector x sex x name)")
 
+    status.step("filtering + aggregating")
     valid_name = raw["name"].astype(str).str.strip().str.match(HEBREW_NAME_RE)
     dropped = raw.loc[~valid_name, "name"].unique()
     if len(dropped):
@@ -72,6 +76,8 @@ def main() -> None:
             print(f"  OK: found expected name {expected!r}")
         else:
             print(f"  WARNING: expected name {expected!r} not found in corpus")
+
+    status.done()
 
 
 if __name__ == "__main__":

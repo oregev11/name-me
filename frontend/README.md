@@ -25,7 +25,9 @@ Requires the backend running (see `../backend/README.md`) at the URL configured 
 
 - `src/api/client.ts` — typed fetch wrapper around the backend API
 - `src/types/api.ts` — request/response types mirroring the backend's Pydantic schemas
-- `src/hooks/useNameSearch.ts` — owns the liked-names state and triggers a re-search on
-  every add/remove (the "refine" loop)
+- `src/hooks/useNameSearch.ts` — owns the liked-names state and the selected model, and
+  triggers a re-search on every add/remove/model-switch (the "refine" loop)
 - `src/components/` — `NameInput` (RTL input + autocomplete), `LikedNameChips`,
-  `ScatterChart` (Recharts 2D plot of liked + suggested names), `SuggestionsList`
+  `ModelToggle` (switches between `written_similarity`/`cultural_similarity`), `ScatterChart`
+  (Recharts 2D plot of liked + suggested names — remounted via `key={model}` on switch since
+  each model has its own unrelated PCA coordinate space), `SuggestionsList`

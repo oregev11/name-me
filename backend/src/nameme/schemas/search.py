@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+ModelId = Literal["written_similarity", "cultural_similarity"]
 
 # Same shape as the filter used when building the corpus (see
 # scripts/build_corpus.py) -- keeps user input restricted to Hebrew script so
@@ -16,6 +19,9 @@ HEBREW_NAME_RE = re.compile(r"^[א-ת][א-ת \-'\"]*$")
 class SearchRequest(BaseModel):
     liked_names: list[str] = Field(..., min_length=1, max_length=10)
     top_k: int = Field(default=10, ge=1, le=30)
+    # Default preserves the pre-multi-model behavior for any existing caller
+    # that omits this field.
+    model: ModelId = "written_similarity"
 
     @field_validator("liked_names")
     @classmethod
@@ -51,7 +57,14 @@ class AutocompleteResponse(BaseModel):
     matches: list[str]
 
 
+class ModelInfo(BaseModel):
+    id: str
+    display_name: str
+    dim: int
+    corpus_vectors: int
+
+
 class HealthResponse(BaseModel):
     status: str
     corpus_size: int
-    embedder_type: str
+    models: list[ModelInfo]

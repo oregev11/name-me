@@ -14,4 +14,4 @@ router = APIRouter()
 def search_names(
     body: SearchRequest, store: CorpusStore = Depends(get_corpus_store)
 ) -> SearchResponse:
-    return search(store, body.liked_names, body.top_k)
+    return search(store, body.liked_names, body.top_k, body.model)

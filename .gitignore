@@ -10,6 +10,10 @@ backend/.python-version
 # Note: backend/src/nameme/artifacts/* is intentionally NOT ignored -- the
 # precomputed corpus + embedder + PCA artifacts are committed on purpose.
 
+# Pipeline status monitor (regenerated on every script run, not committed)
+backend/scripts/.pipeline_status.json
+backend/scripts/pipeline_status.html
+
 # Node
 node_modules/
 dist/

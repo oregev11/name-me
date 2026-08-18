@@ -1,5 +1,7 @@
 // Mirrors backend/src/nameme/schemas/search.py
 
+export type ModelId = "written_similarity" | "cultural_similarity";
+
 export interface NamePoint {
   name: string;
   x: number;
@@ -21,8 +23,15 @@ export interface AutocompleteResponse {
   matches: string[];
 }
 
+export interface ModelInfo {
+  id: string;
+  display_name: string;
+  dim: number;
+  corpus_vectors: number;
+}
+
 export interface HealthResponse {
   status: string;
   corpus_size: number;
-  embedder_type: string;
+  models: ModelInfo[];
 }
