@@ -619,3 +619,83 @@ committed artifacts, no mocks, session-scoped fixtures). Frontend:
 - `frontend/src/components/Footer.tsx` (new)
 - `frontend/src/components/ScatterChart.tsx`
 - `frontend/src/hooks/useNameSearch.ts`
+
+---
+
+# Phase 4: Sector filter + clearer liked-name visualization
+
+**Status: DONE.**
+
+## Context
+
+Two follow-up requests: (1) filter results by the population-sector "tabs" the CBS source
+data is organized by (Jewish/Muslim/Christian-Arab/Druze boys/girls), which the data
+pipeline had been discarding since Phase 1 (`build_corpus.py` aggregated `sector` away when
+building `name_corpus.csv`); (2) make liked/selected names visually unambiguous in the
+scatter plot — they'd been sharing the same popularity-driven size scale as suggestions,
+risking blending in among nearby bubbles.
+
+## What was built
+
+**Data pipeline**: `build_corpus.py` no longer aggregates away `sector` — `name_corpus.csv`
+is now one row per `(name, sex, sector)` (28,623 rows across the same 19,882 unique names;
+embeddings are unaffected, since they only depend on the name list, not this metadata, so
+`build_artifacts.py` did not need to re-run). Confirmed the 4 sector values actually present
+in the source (`Jewish`, `Muslim`, `Christian-Arab`, `Druze` — no `Other`, despite earlier
+Phase 1 research assuming one existed).
+
+**Correctness fix bundled in**: the old `meta_for(name)["sex"]` was the *dominant* sex only
+(highest-total row), so filtering by a name's non-dominant sex silently excluded it even
+when real data existed (e.g. "דניאל" — dominant M with ~62K, but ~13K girls too — would
+vanish entirely under a sex=F filter). `CorpusStore` now tracks every `(sex, sector)`
+combination each name has a real row in (`combos`), and `matches_sex_sector(name, sex,
+sector)` checks combined membership (not two independent checks) — so `sex=F, sector=Jewish`
+only matches names with an actual Jewish-girls row, not any name with *some* Jewish presence
+and *some* girls' presence from unrelated rows. Locked in with `tests/test_corpus_store.py`
+using "דניאל" as a real example, not a fabricated fixture.
+
+**API**: `SearchRequest.sector: "any"|"Jewish"|"Muslim"|"Christian-Arab"|"Druze"`.
+`SuggestedName.sectors: list[str]` — every sector a name has any row in (exhaustive, unlike
+`sex` which stays dominant-only for backward compatibility and simplicity).
+
+**Frontend**: `SearchFilters` gained a sector `<select>` (Hebrew labels: יהודי/ה, מוסלמי/ת,
+נוצרי/ה-ערבי/ה, דרוזי/ת). `ScatterChart`'s liked-name points now use a custom `shape`
+render function (`LikedPointShape`) instead of the built-in `shape="star"` string — a
+hand-drawn SVG star polygon at a fixed size (deliberately not wired to the `ZAxis`
+popularity scale suggestions use), a white stroke outline for contrast, and the name printed
+directly above it. Renders last in the JSX (top of SVG z-order), so it's never covered by
+suggestion bubbles.
+
+## Testing
+
+New `tests/test_corpus_store.py` (6 tests): unisex-name combo detection, the dominant-sex
+bug-fix regression test, `any`/`any` always matching, combined sex+sector matching requiring
+a real co-occurring row, percentile bounds, overall-total aggregation. `test_search.py`
+gained a sector-filter test (asserts every result's `sectors` list actually contains the
+filtered sector — a precise check, unlike the sex filter's HTTP-level test, which was
+loosened to a wiring-level check now that the dominant-sex assumption it relied on is gone).
+Frontend: `SearchFilters.test.tsx` gained a sector-select test.
+
+## Verification — all done
+
+- ✅ Backend: 36 pytest tests + 1 xpass, `ruff check .` clean.
+- ✅ Frontend: 14 Vitest tests, `tsc -b` clean, oxlint clean, prod build succeeds.
+- ✅ Re-ran `build_corpus.py`; confirmed unique-name count unchanged (19,882) so no
+  artifact/embedding rebuild was needed.
+- ✅ End-to-end in a real headless browser: sector=Muslim filter returns only names whose
+  `sectors` list actually contains `"Muslim"` (verified via a direct API call, not just the
+  UI); two liked names ("דוד", "שרה") render as clearly labeled, fixed-size stars distinct
+  from the surrounding suggestion bubbles (screenshot reviewed); zero console errors.
+- Hit one environment snag during verification (unrelated to the app): background dev-server
+  processes ended up suspended (`T` state) rather than killed by a prior cleanup, which held
+  the port open while not responding — resolved with `kill -9` and a clean restart. Not a
+  code issue, noted here only because it cost some time to diagnose.
+
+### Critical files
+
+- `backend/scripts/build_corpus.py`
+- `backend/src/nameme/corpus/loader.py`
+- `backend/src/nameme/services/search_service.py`
+- `backend/src/nameme/schemas/search.py`
+- `frontend/src/components/SearchFilters.tsx`
+- `frontend/src/components/ScatterChart.tsx`

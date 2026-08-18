@@ -5,6 +5,7 @@ import type { SearchFilters as SearchFiltersType } from "../src/types/api";
 
 const DEFAULT: SearchFiltersType = {
   sex: "any",
+  sector: "any",
   popularity: "all",
   sort: "similar",
 };
@@ -19,6 +20,17 @@ describe("SearchFilters", () => {
       target: { value: "F" },
     });
     expect(onChange).toHaveBeenCalledWith({ sex: "F" });
+  });
+
+  it("calls onChange with the selected sector", () => {
+    const onChange = vi.fn();
+    render(
+      <SearchFilters value={DEFAULT} onChange={onChange} disabled={false} />,
+    );
+    fireEvent.change(screen.getByDisplayValue("כל המגזרים"), {
+      target: { value: "Muslim" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ sector: "Muslim" });
   });
 
   it("calls onChange with the selected popularity filter", () => {
@@ -64,6 +76,7 @@ describe("SearchFilters", () => {
       <SearchFilters value={DEFAULT} onChange={vi.fn()} disabled={true} />,
     );
     expect(screen.getByDisplayValue("כל המינים")).toBeDisabled();
+    expect(screen.getByDisplayValue("כל המגזרים")).toBeDisabled();
     expect(screen.getByDisplayValue("כל השמות")).toBeDisabled();
     expect(screen.getByText("הכי דומים")).toBeDisabled();
   });

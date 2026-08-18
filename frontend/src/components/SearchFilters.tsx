@@ -1,6 +1,7 @@
 import type {
   PopularityFilter,
   SearchFilters as SearchFiltersType,
+  SectorFilter,
   SexFilter,
 } from "../types/api";
 
@@ -14,6 +15,16 @@ const SEX_OPTIONS: { value: SexFilter; label: string }[] = [
   { value: "any", label: "כל המינים" },
   { value: "M", label: "בנים" },
   { value: "F", label: "בנות" },
+];
+
+// Matches the 4 population sectors CBS publishes given-name counts by (the
+// "tabs" in the source release) -- see backend/scripts/build_corpus.py.
+const SECTOR_OPTIONS: { value: SectorFilter; label: string }[] = [
+  { value: "any", label: "כל המגזרים" },
+  { value: "Jewish", label: "יהודי/ה" },
+  { value: "Muslim", label: "מוסלמי/ת" },
+  { value: "Christian-Arab", label: "נוצרי/ה-ערבי/ה" },
+  { value: "Druze", label: "דרוזי/ת" },
 ];
 
 const POPULARITY_OPTIONS: { value: PopularityFilter; label: string }[] = [
@@ -38,6 +49,21 @@ export function SearchFilters({ value, onChange, disabled }: Props) {
           onChange={(e) => onChange({ sex: e.target.value as SexFilter })}
         >
           {SEX_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="search-filter">
+        <span>מגזר</span>
+        <select
+          value={value.sector}
+          disabled={disabled}
+          onChange={(e) => onChange({ sector: e.target.value as SectorFilter })}
+        >
+          {SECTOR_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

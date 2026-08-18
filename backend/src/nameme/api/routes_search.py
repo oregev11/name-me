@@ -20,6 +20,7 @@ def search_names(
         body.top_k,
         body.model,
         sex=body.sex,
+        sector=body.sector,
         popularity=body.popularity,
         sort=body.sort,
     )

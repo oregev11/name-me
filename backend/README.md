@@ -48,7 +48,7 @@ full sequence diagram of a search request end to end. The short version:
 
 | Endpoint | Method | Request body / params | Response |
 |---|---|---|---|
-| `/api/search` | POST | `{liked_names: string[], top_k?: number (default 20), model?: "written_similarity"\|"cultural_similarity", sex?: "any"\|"M"\|"F", popularity?: "all"\|"top_10_percent"\|"top_90_percent", sort?: "similar"\|"dissimilar"}` | `{liked: NamePoint[], suggestions: SuggestedName[]}` |
+| `/api/search` | POST | `{liked_names: string[], top_k?: number (default 20), model?: "written_similarity"\|"cultural_similarity", sex?: "any"\|"M"\|"F", sector?: "any"\|"Jewish"\|"Muslim"\|"Christian-Arab"\|"Druze", popularity?: "all"\|"top_10_percent"\|"top_90_percent", sort?: "similar"\|"dissimilar"}` | `{liked: NamePoint[], suggestions: SuggestedName[]}` |
 | `/api/autocomplete` | GET | `?q=<prefix>&limit=<n>` | `{matches: string[]}` |
 | `/api/health` | GET | — | `{status, corpus_size, models: ModelInfo[]}` |
 
@@ -56,13 +56,19 @@ full sequence diagram of a search request end to end. The short version:
 brief — the middle point is the liked names' centroid, computed in
 `search_service.search()`. `popularity`'s percentile thresholds are precomputed once at
 startup (`CorpusStore.__post_init__`, `total.rank(pct=True)`) so filtering is a cheap
-threshold check per candidate, not a re-rank. `sort: "dissimilar"` reverses which end of the
-same similarity ranking gets walked (farthest first instead of closest first) — useful for
-finding names that deliberately don't resemble your liked names.
+threshold check per candidate, not a re-rank. `sex`+`sector` are checked together, not
+independently — `CorpusStore.matches_sex_sector()` requires a real `(sex, sector)` row for
+the name, so e.g. `sex=F, sector=Jewish` won't match a name whose only female usage is
+Muslim. `sort: "dissimilar"` reverses which end of the same similarity ranking gets walked
+(farthest first instead of closest first) — useful for finding names that deliberately
+don't resemble your liked names.
 
 `NamePoint = {name, x, y}`; `SuggestedName` adds `similarity` (cosine, in `[-1,1]` though
 `written_similarity`'s non-negative TF-IDF vectors keep it in `[0,1]` in practice), `sex`
-(`"M"`/`"F"`), `popularity` (raw CBS count). All schemas are Pydantic models in
+(dominant sex, `"M"`/`"F"` — a name can still match a `sex` filter for its *non-dominant*
+sex if it has real rows there, see above), `sectors` (every sector this name has any row
+in, not just the dominant one — this field is exhaustive, unlike `sex`), `popularity` (raw
+CBS count, summed across all sex+sector rows). All schemas are Pydantic models in
 `src/nameme/schemas/search.py` — the frontend's `src/types/api.ts` mirrors them by hand, so
 if you change one, change the other. Full interactive docs (auto-generated from the same
 Pydantic models) are always available at `/docs` when the server is running.

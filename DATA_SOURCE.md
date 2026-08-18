@@ -20,9 +20,12 @@ wraps official Israeli given-name data published by the Central Bureau of Statis
 ## How the corpus was built
 
 `backend/scripts/build_corpus.py` downloads the totals CSV from the pinned commit above,
-aggregates it to one row per `(name, sex)` pair (summing counts across sector), drops a
-small number of non-Hebrew-script entries (encoding artifacts), and writes the result to
-`backend/src/nameme/artifacts/name_corpus.csv`. Result: 22,270 unique (name, sex) rows.
+keeps one row per `(name, sex, sector)` combination — **sector** is CBS's population-group
+breakdown (Jewish / Muslim / Christian-Arab / Druze, the "tabs" the source release is
+organized by), which the app uses for the sex/sector search filters and is *not* aggregated
+away — drops a small number of non-Hebrew-script entries (encoding artifacts), and writes
+the result to `backend/src/nameme/artifacts/name_corpus.csv`. Result: 28,623 rows across
+19,882 unique names.
 
 ## Refreshing the data
 

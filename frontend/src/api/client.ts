@@ -34,6 +34,7 @@ export function searchNames(
       top_k: topK,
       model,
       sex: filters.sex,
+      sector: filters.sector,
       popularity: filters.popularity,
       sort: filters.sort,
     }),

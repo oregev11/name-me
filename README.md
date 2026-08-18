@@ -65,7 +65,7 @@ git — the deployed app never trains or downloads anything at runtime.
 
 ```mermaid
 flowchart TD
-    A["build_corpus.py<br/>fetch CBS/babynamesIL CSV"] --> B["name_corpus.csv<br/>~20K unique (name, sex) rows"]
+    A["build_corpus.py<br/>fetch CBS/babynamesIL CSV"] --> B["name_corpus.csv<br/>~28K (name, sex, sector) rows,<br/>~20K unique names"]
     B --> C["build_artifacts.py"]
     D["export_semantic_model.py<br/>(one-time, needs the 'export' dep group:<br/>torch + transformers + optimum)"] --> E["cultural_similarity/<br/>model_quantized.onnx + tokenizer"]
     E --> C
@@ -145,6 +145,11 @@ in "most different" mode, farthest) corpus names to it — configurable via:
 
 - **Model**: `written_similarity` or `cultural_similarity` (see below).
 - **Sex**: all / boys only / girls only.
+- **Sector**: all / Jewish / Muslim / Christian-Arab / Druze — the population-group
+  breakdown CBS publishes given-name counts by (the "tabs" in the source release; see
+  `DATA_SOURCE.md`). Sex and sector combine into one check, not two independent ones — e.g.
+  sex=boys + sector=Jewish only matches names actually used as Jewish boys' names, not any
+  name with *some* Jewish presence and *some* boys' presence from unrelated rows.
 - **Popularity**: all names / top 10% most popular / top 90% (excludes only the least
   popular decile) — computed once at startup as a percentile rank over the corpus, so
   filtering is just a threshold check, not a re-rank.
@@ -153,8 +158,11 @@ in "most different" mode, farthest) corpus names to it — configurable via:
 
 The scatter plot colors suggestions by sex (blue/pink) and sizes each point by real-world
 popularity (a Recharts `ZAxis` bubble channel), with a legend and a richer tooltip (name,
-similarity, sex, popularity). The footer links to the full name list (`/names.csv`, a static
-copy of the corpus) and, once set, `VITE_GITHUB_URL` for a source-code link.
+similarity, sex, popularity). **Liked (selected) names render as large stars with a white
+outline and their name printed above them** — deliberately not tied to the popularity size
+scale, so they never blend into the suggestion bubbles around them. The footer links to the
+full name list (`/names.csv`, a static copy of the corpus) and, once set, `VITE_GITHUB_URL`
+for a source-code link.
 
 ## The two similarity models
 

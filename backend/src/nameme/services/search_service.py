@@ -15,6 +15,7 @@ from nameme.schemas.search import (
     NamePoint,
     PopularityFilter,
     SearchResponse,
+    SectorFilter,
     SexFilter,
     SortMode,
     SuggestedName,
@@ -55,6 +56,7 @@ def search(
     top_k: int,
     model_id: str,
     sex: SexFilter = "any",
+    sector: SectorFilter = "any",
     popularity: PopularityFilter = "all",
     sort: SortMode = "similar",
 ) -> SearchResponse:
@@ -77,9 +79,9 @@ def search(
         name = model.unique_names[idx]
         if name in liked_set:
             continue
-        meta = store.meta_for(name)
-        if sex != "any" and meta["sex"] != sex:
+        if not store.matches_sex_sector(name, sex, sector):
             continue
+        meta = store.meta_for(name)
         if meta["percentile"] < min_percentile:
             continue
         suggestion_idx.append(idx)
@@ -106,6 +108,7 @@ def search(
                 similarity=float(similarities[idx]),
                 sex=meta["sex"],
                 popularity=int(meta["total"]),
+                sectors=sorted({sec for _s, sec in meta["combos"]}),
             )
         )
 

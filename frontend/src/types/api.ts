@@ -2,11 +2,14 @@
 
 export type ModelId = "written_similarity" | "cultural_similarity";
 export type SexFilter = "any" | "M" | "F";
+export type SectorFilter =
+  "any" | "Jewish" | "Muslim" | "Christian-Arab" | "Druze";
 export type PopularityFilter = "all" | "top_10_percent" | "top_90_percent";
 export type SortMode = "similar" | "dissimilar";
 
 export interface SearchFilters {
   sex: SexFilter;
+  sector: SectorFilter;
   popularity: PopularityFilter;
   sort: SortMode;
 }
@@ -21,6 +24,7 @@ export interface SuggestedName extends NamePoint {
   similarity: number;
   sex: "M" | "F";
   popularity: number;
+  sectors: string[];
 }
 
 export interface SearchResponse {

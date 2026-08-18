@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, field_validator
 
 ModelId = Literal["written_similarity", "cultural_similarity"]
 SexFilter = Literal["any", "M", "F"]
+# The 4 population sectors CBS publishes given-name counts by (the "tabs"
+# in the source release) -- see scripts/build_corpus.py.
+SectorFilter = Literal["any", "Jewish", "Muslim", "Christian-Arab", "Druze"]
 PopularityFilter = Literal["all", "top_10_percent", "top_90_percent"]
 SortMode = Literal["similar", "dissimilar"]
 
@@ -28,6 +31,7 @@ class SearchRequest(BaseModel):
     # that omits this field.
     model: ModelId = "written_similarity"
     sex: SexFilter = "any"
+    sector: SectorFilter = "any"
     popularity: PopularityFilter = "all"
     sort: SortMode = "similar"
 
@@ -54,6 +58,7 @@ class SuggestedName(BaseModel):
     similarity: float
     sex: str
     popularity: int
+    sectors: list[str]
 
 
 class SearchResponse(BaseModel):

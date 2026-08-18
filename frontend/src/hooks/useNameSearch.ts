@@ -4,6 +4,7 @@ import type { ModelId, SearchFilters, SearchResponse } from "../types/api";
 
 const DEFAULT_FILTERS: SearchFilters = {
   sex: "any",
+  sector: "any",
   popularity: "all",
   sort: "similar",
 };

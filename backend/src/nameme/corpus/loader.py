@@ -39,31 +39,76 @@ class ModelStore:
 class CorpusStore:
     """Shared corpus metadata + every loaded model's ModelStore."""
 
-    names_df: pd.DataFrame  # columns: name, sex, total (may have 2 rows per name)
+    # columns: name, sex, sector, total -- one row per (name, sex, sector)
+    # combination CBS published a count for; a name can have several rows
+    # (e.g. used by both sexes, or by more than one sector).
+    names_df: pd.DataFrame
     models: dict[str, ModelStore]
     _meta_by_name: dict[str, dict] = field(init=False, repr=False)
     names_by_popularity: list[str] = field(init=False, repr=False)
     corpus_size: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        # If a name appears for both sexes, prefer the higher-total row for
-        # display metadata (e.g. autocomplete). Model-independent.
-        meta = (
-            self.names_df.sort_values("total", ascending=False)
+        df = self.names_df
+
+        # Overall popularity: summed across every sex+sector row for a name
+        # (a name's "total" is no longer a single source row now that
+        # sector isn't aggregated away at build time).
+        overall_total = df.groupby("name")["total"].sum()
+        percentile = overall_total.rank(pct=True)
+
+        # Dominant sex: the single (sex, sector) row with the largest count
+        # for that name -- kept as a simple display field (SuggestedName.sex),
+        # same simplification as before sector was tracked.
+        dominant = (
+            df.sort_values("total", ascending=False)
             .drop_duplicates(subset="name", keep="first")
-            .set_index("name")
+            .set_index("name")["sex"]
         )
-        # Percentile rank by popularity, 0..1, higher = more popular. Powers
-        # the "top 10% / top 90% of names" filter -- computed once here so a
-        # search request is just a threshold comparison, not a full re-rank.
-        meta["percentile"] = meta["total"].rank(pct=True)
-        self._meta_by_name = meta.to_dict(orient="index")
+
+        # Every (sex, sector) combination a name has at least one row for --
+        # this is what the sex/sector filters actually check membership
+        # against, so a name filtered to e.g. sex=M, sector=Jewish must have
+        # a real Jewish-boys row, not just *some* Jewish row and *some* boys
+        # row from unrelated sectors/sexes.
+        combos = df.groupby("name").apply(
+            lambda g: set(zip(g["sex"], g["sector"], strict=True)),
+            include_groups=False,
+        )
+
+        self._meta_by_name = {
+            name: {
+                "sex": dominant[name],
+                "total": int(overall_total[name]),
+                "percentile": float(percentile[name]),
+                "combos": combos[name],
+            }
+            for name in overall_total.index
+        }
         # Precomputed once so autocomplete requests only filter, not sort.
-        self.names_by_popularity = meta.index.tolist()
-        self.corpus_size = len(meta)
+        self.names_by_popularity = overall_total.sort_values(ascending=False).index.tolist()
+        self.corpus_size = len(overall_total)
 
     def meta_for(self, name: str) -> dict:
-        return self._meta_by_name.get(name, {"sex": "U", "total": 0, "percentile": 0.0})
+        return self._meta_by_name.get(
+            name, {"sex": "U", "total": 0, "percentile": 0.0, "combos": set()}
+        )
+
+    def matches_sex_sector(self, name: str, sex: str, sector: str) -> bool:
+        """True if `name` has at least one real (sex, sector) row matching
+        both filters (either side of "any" matches anything). This is a
+        combined check rather than two independent membership checks, so
+        filtering to e.g. sex=M + sector=Jewish only keeps names actually
+        used as Jewish boys' names -- not any name with some Jewish
+        presence AND some boys' presence, possibly from unrelated rows.
+        """
+        if sex == "any" and sector == "any":
+            return True
+        combos = self.meta_for(name)["combos"]
+        return any(
+            (sex == "any" or s == sex) and (sector == "any" or sec == sector)
+            for s, sec in combos
+        )
 
     def model(self, model_id: str) -> ModelStore:
         try:

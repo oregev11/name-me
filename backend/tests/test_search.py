@@ -83,13 +83,38 @@ def test_search_default_top_k_is_20(client: TestClient) -> None:
 
 
 def test_search_filters_by_sex(client: TestClient) -> None:
-    resp = client.post(
+    # Wiring-level test: the filter is applied and changes the result set.
+    # Exact per-item correctness (a name can pass a sex=F filter even when
+    # its *dominant* displayed sex is M, e.g. mostly-boys names still given
+    # to many girls) is covered precisely in test_corpus_store.py, since
+    # the API response's `sex` field alone can't prove that from here.
+    unfiltered = client.post(
+        "/api/search", json={"liked_names": ["דוד"], "top_k": 15, "sex": "any"}
+    ).json()["suggestions"]
+    filtered = client.post(
         "/api/search", json={"liked_names": ["דוד"], "top_k": 15, "sex": "F"}
+    )
+    assert filtered.status_code == 200
+    filtered_suggestions = filtered.json()["suggestions"]
+    assert len(filtered_suggestions) > 0
+    assert {s["name"] for s in filtered_suggestions} != {s["name"] for s in unfiltered}
+
+
+def test_search_filters_by_sector(client: TestClient) -> None:
+    resp = client.post(
+        "/api/search", json={"liked_names": ["דוד"], "top_k": 15, "sector": "Muslim"}
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
     assert len(suggestions) > 0
-    assert all(s["sex"] == "F" for s in suggestions)
+    assert all("Muslim" in s["sectors"] for s in suggestions)
+
+
+def test_search_rejects_unknown_sector(client: TestClient) -> None:
+    resp = client.post(
+        "/api/search", json={"liked_names": ["דוד"], "sector": "Not A Sector"}
+    )
+    assert resp.status_code == 422
 
 
 def test_search_filters_by_popularity_top_10_percent(client: TestClient) -> None:
