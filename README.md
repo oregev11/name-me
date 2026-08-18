@@ -4,10 +4,10 @@ A portfolio web app for choosing a Hebrew baby name with a little machine-learni
 Enter a couple of Hebrew names you like, and the app finds the 20 closest names to their
 "middle point" by embedding them and running cosine similarity search over a corpus of
 ~20,000 real Hebrew given names — with the results plotted on a 2D map so you can see how
-names relate to each other, then refine by adding/removing names, filtering by sex or
-popularity, or flipping to "most different" instead of "most similar." Two independent
-similarity models are live — pick either one, per search — see
-[below](#the-two-similarity-models).
+names relate to each other, then refine by adding/removing names, filtering by sex,
+population sector, birth-year range (a "ruler"), or popularity, or flipping to "most
+different" instead of "most similar." Two independent similarity models are live — pick
+either one, per search — see [below](#the-two-similarity-models).
 
 > **Status**: both models (`written_similarity` and `cultural_similarity`) are built, tested,
 > and verified end-to-end, including a live UI toggle between them. Not yet deployed to a
@@ -65,7 +65,8 @@ git — the deployed app never trains or downloads anything at runtime.
 
 ```mermaid
 flowchart TD
-    A["build_corpus.py<br/>fetch CBS/babynamesIL CSV"] --> B["name_corpus.csv<br/>~28K (name, sex, sector) rows,<br/>~20K unique names"]
+    A["build_corpus.py<br/>fetch CBS/babynamesIL CSVs"] --> B["name_corpus.csv<br/>~28K (name, sex, sector) rows,<br/>~20K unique names -- the full corpus"]
+    A --> B2["name_years.csv<br/>~160K (name, sex, sector, year) rows,<br/>subset: only ~5.7K names<br/>-- powers the year-range filter"]
     B --> C["build_artifacts.py"]
     D["export_semantic_model.py<br/>(one-time, needs the 'export' dep group:<br/>torch + transformers + optimum)"] --> E["cultural_similarity/<br/>model_quantized.onnx + tokenizer"]
     E --> C
@@ -73,6 +74,7 @@ flowchart TD
     C --> G["cultural_similarity/<br/>vectors.npz + PCA<br/>(reuses E's exported model)"]
     F --> H[("committed to git,<br/>shipped in the Docker image")]
     G --> H
+    B2 --> H
 ```
 
 All three scripts write live progress to `backend/scripts/pipeline_status.html` (self-
@@ -150,9 +152,16 @@ in "most different" mode, farthest) corpus names to it — configurable via:
   `DATA_SOURCE.md`). Sex and sector combine into one check, not two independent ones — e.g.
   sex=boys + sector=Jewish only matches names actually used as Jewish boys' names, not any
   name with *some* Jewish presence and *some* boys' presence from unrelated rows.
+- **Birth-year range** (a "ruler" — dual-handle slider): restricts suggestions to names with
+  evidence of use within the chosen year span, e.g. 1990–2010. Powered by a separate,
+  supplementary yearly breakdown (`name_years.csv`) that only covers ~5,700 of the ~20,000
+  corpus names (see `DATA_SOURCE.md` for why) — a name with no yearly data stays fully
+  searchable with the full range selected, but drops out once you narrow the range, since
+  there's no evidence of which years it was actually given in. Computed once per request
+  (not per candidate) by filtering the year breakdown and re-aggregating.
 - **Popularity**: all names / top 10% most popular / top 90% (excludes only the least
-  popular decile) — computed once at startup as a percentile rank over the corpus, so
-  filtering is just a threshold check, not a re-rank.
+  popular decile) — computed once at startup (or once per request, for a year-filtered
+  search) as a percentile rank, so filtering is a threshold check, not a re-rank.
 - **Sort**: most similar (default) or most different — same ranking, walked from the other
   end, useful for finding names that deliberately *don't* resemble your liked names.
 

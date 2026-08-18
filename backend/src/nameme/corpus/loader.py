@@ -35,80 +35,121 @@ class ModelStore:
         return None if row is None else self.vectors[row]
 
 
+def _compute_meta(df: pd.DataFrame) -> dict[str, dict]:
+    """Builds the per-name metadata dict (sex, total, percentile, combos)
+    from a (name, sex, sector, total) dataframe. Shared by the full-corpus
+    (all years) case and the on-demand year-filtered case -- same shape,
+    different input rows.
+    """
+    if df.empty:
+        return {}
+
+    overall_total = df.groupby("name")["total"].sum()
+    percentile = overall_total.rank(pct=True)
+
+    # Dominant sex: the single (sex, sector) row with the largest count for
+    # that name -- kept as a simple display field (SuggestedName.sex).
+    dominant = (
+        df.sort_values("total", ascending=False)
+        .drop_duplicates(subset="name", keep="first")
+        .set_index("name")["sex"]
+    )
+
+    # Every (sex, sector) combination a name has at least one row for --
+    # this is what the sex/sector filters check membership against, so
+    # e.g. sex=M + sector=Jewish only keeps names with a real Jewish-boys
+    # row, not just *some* Jewish row and *some* boys row from unrelated
+    # rows.
+    combos = df.groupby("name").apply(
+        lambda g: set(zip(g["sex"], g["sector"], strict=True)),
+        include_groups=False,
+    )
+
+    return {
+        name: {
+            "sex": dominant[name],
+            "total": int(overall_total[name]),
+            "percentile": float(percentile[name]),
+            "combos": combos[name],
+        }
+        for name in overall_total.index
+    }
+
+
+def combos_match(combos: set[tuple[str, str]], sex: str, sector: str) -> bool:
+    if sex == "any" and sector == "any":
+        return True
+    return any(
+        (sex == "any" or s == sex) and (sector == "any" or sec == sector) for s, sec in combos
+    )
+
+
 @dataclass
 class CorpusStore:
     """Shared corpus metadata + every loaded model's ModelStore."""
 
     # columns: name, sex, sector, total -- one row per (name, sex, sector)
-    # combination CBS published a count for; a name can have several rows
-    # (e.g. used by both sexes, or by more than one sector).
+    # combination CBS published a lifetime count for; a name can have
+    # several rows (e.g. used by both sexes, or by more than one sector).
     names_df: pd.DataFrame
+    # columns: name, sex, sector, year, total -- supplementary per-year
+    # breakdown, powers the year-range filter. A STRICT SUBSET of
+    # names_df's names (see scripts/build_corpus.py): names without any
+    # yearly breakdown remain fully searchable with no year filter applied,
+    # but can't be matched against a narrower-than-full year range since we
+    # have no evidence of which years they were actually given in.
+    years_df: pd.DataFrame
     models: dict[str, ModelStore]
     _meta_by_name: dict[str, dict] = field(init=False, repr=False)
     names_by_popularity: list[str] = field(init=False, repr=False)
     corpus_size: int = field(init=False, repr=False)
+    year_min: int = field(init=False, repr=False)
+    year_max: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        df = self.names_df
-
-        # Overall popularity: summed across every sex+sector row for a name
-        # (a name's "total" is no longer a single source row now that
-        # sector isn't aggregated away at build time).
-        overall_total = df.groupby("name")["total"].sum()
-        percentile = overall_total.rank(pct=True)
-
-        # Dominant sex: the single (sex, sector) row with the largest count
-        # for that name -- kept as a simple display field (SuggestedName.sex),
-        # same simplification as before sector was tracked.
-        dominant = (
-            df.sort_values("total", ascending=False)
-            .drop_duplicates(subset="name", keep="first")
-            .set_index("name")["sex"]
-        )
-
-        # Every (sex, sector) combination a name has at least one row for --
-        # this is what the sex/sector filters actually check membership
-        # against, so a name filtered to e.g. sex=M, sector=Jewish must have
-        # a real Jewish-boys row, not just *some* Jewish row and *some* boys
-        # row from unrelated sectors/sexes.
-        combos = df.groupby("name").apply(
-            lambda g: set(zip(g["sex"], g["sector"], strict=True)),
-            include_groups=False,
-        )
-
-        self._meta_by_name = {
-            name: {
-                "sex": dominant[name],
-                "total": int(overall_total[name]),
-                "percentile": float(percentile[name]),
-                "combos": combos[name],
-            }
-            for name in overall_total.index
-        }
+        self._meta_by_name = _compute_meta(self.names_df)
         # Precomputed once so autocomplete requests only filter, not sort.
-        self.names_by_popularity = overall_total.sort_values(ascending=False).index.tolist()
-        self.corpus_size = len(overall_total)
+        self.names_by_popularity = sorted(
+            self._meta_by_name, key=lambda n: self._meta_by_name[n]["total"], reverse=True
+        )
+        self.corpus_size = len(self._meta_by_name)
+        self.year_min = int(self.years_df["year"].min())
+        self.year_max = int(self.years_df["year"].max())
 
     def meta_for(self, name: str) -> dict:
         return self._meta_by_name.get(
             name, {"sex": "U", "total": 0, "percentile": 0.0, "combos": set()}
         )
 
+    def full_meta(self) -> dict[str, dict]:
+        """The complete (all-years) per-name metadata dict -- same shape as
+        `year_filtered_meta()`'s return value, so callers can pick either
+        source and treat it uniformly (see services/search_service.py).
+        """
+        return self._meta_by_name
+
     def matches_sex_sector(self, name: str, sex: str, sector: str) -> bool:
         """True if `name` has at least one real (sex, sector) row matching
-        both filters (either side of "any" matches anything). This is a
-        combined check rather than two independent membership checks, so
-        filtering to e.g. sex=M + sector=Jewish only keeps names actually
-        used as Jewish boys' names -- not any name with some Jewish
-        presence AND some boys' presence, possibly from unrelated rows.
+        both filters (either side of "any" matches anything) -- see
+        `combos_match`. Uses the full (all-years) metadata; for a
+        year-filtered view use `year_filtered_meta()` + `combos_match`
+        directly instead (see services/search_service.py).
         """
-        if sex == "any" and sector == "any":
-            return True
-        combos = self.meta_for(name)["combos"]
-        return any(
-            (sex == "any" or s == sex) and (sector == "any" or sec == sector)
-            for s, sec in combos
-        )
+        return combos_match(self.meta_for(name)["combos"], sex, sector)
+
+    def is_full_year_range(self, min_year: int, max_year: int) -> bool:
+        return min_year <= self.year_min and max_year >= self.year_max
+
+    def year_filtered_meta(self, min_year: int, max_year: int) -> dict[str, dict]:
+        """Per-name metadata computed from ONLY `years_df` rows within
+        [min_year, max_year]. Names with no yearly breakdown at all are
+        simply absent from the result -- callers should treat this dict as
+        the full candidate universe for a year-filtered search (a name
+        missing from it means "no evidence found in this range", not "look
+        it up elsewhere"), not fall back to `meta_for` for missing names.
+        """
+        mask = (self.years_df["year"] >= min_year) & (self.years_df["year"] <= max_year)
+        return _compute_meta(self.years_df.loc[mask])
 
     def model(self, model_id: str) -> ModelStore:
         try:
@@ -119,6 +160,7 @@ class CorpusStore:
 
 def load_corpus_store(artifacts_dir: Path) -> CorpusStore:
     names_df = pd.read_csv(artifacts_dir / "name_corpus.csv")
+    years_df = pd.read_csv(artifacts_dir / "name_years.csv")
 
     models: dict[str, ModelStore] = {}
     for spec in MODEL_REGISTRY.values():
@@ -144,4 +186,4 @@ def load_corpus_store(artifacts_dir: Path) -> CorpusStore:
             unique_names=unique_names, vectors=vectors, embedder=embedder, pca=pca
         )
 
-    return CorpusStore(names_df=names_df, models=models)
+    return CorpusStore(names_df=names_df, years_df=years_df, models=models)

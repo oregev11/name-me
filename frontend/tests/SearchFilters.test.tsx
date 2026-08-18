@@ -8,6 +8,8 @@ const DEFAULT: SearchFiltersType = {
   sector: "any",
   popularity: "all",
   sort: "similar",
+  yearMin: null,
+  yearMax: null,
 };
 
 describe("SearchFilters", () => {

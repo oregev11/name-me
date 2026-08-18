@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { ApiError, searchNames } from "../api/client";
+import { useCallback, useEffect, useState } from "react";
+import { ApiError, getHealth, searchNames } from "../api/client";
 import type { ModelId, SearchFilters, SearchResponse } from "../types/api";
 
 const DEFAULT_FILTERS: SearchFilters = {
@@ -7,15 +7,33 @@ const DEFAULT_FILTERS: SearchFilters = {
   sector: "any",
   popularity: "all",
   sort: "similar",
+  yearMin: null,
+  yearMax: null,
 };
+
+// Fallback shown before /api/health resolves -- matches the CBS dataset's
+// known span, so the slider renders sensibly even during that first fetch.
+const FALLBACK_YEAR_BOUNDS = { min: 1949, max: 2024 };
 
 export function useNameSearch() {
   const [likedNames, setLikedNames] = useState<string[]>([]);
   const [model, setModelState] = useState<ModelId>("written_similarity");
   const [filters, setFiltersState] = useState<SearchFilters>(DEFAULT_FILTERS);
+  const [yearBounds, setYearBounds] = useState(FALLBACK_YEAR_BOUNDS);
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getHealth()
+      .then((health) =>
+        setYearBounds({ min: health.year_min, max: health.year_max }),
+      )
+      .catch(() => {
+        /* keep the fallback bounds -- the slider still works, just against
+           an assumed range rather than a confirmed one */
+      });
+  }, []);
 
   const runSearch = useCallback(
     async (
@@ -94,6 +112,7 @@ export function useNameSearch() {
     likedNames,
     model,
     filters,
+    yearBounds,
     result,
     loading,
     error,

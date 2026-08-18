@@ -15,6 +15,8 @@ def health(store: CorpusStore = Depends(get_corpus_store)) -> HealthResponse:
     return HealthResponse(
         status="ok",
         corpus_size=store.corpus_size,
+        year_min=store.year_min,
+        year_max=store.year_max,
         models=[
             ModelInfo(
                 id=model_id,

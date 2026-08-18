@@ -699,3 +699,87 @@ Frontend: `SearchFilters.test.tsx` gained a sector-select test.
 - `backend/src/nameme/schemas/search.py`
 - `frontend/src/components/SearchFilters.tsx`
 - `frontend/src/components/ScatterChart.tsx`
+
+---
+
+# Phase 5: Year-range filter (a "ruler")
+
+**Status: DONE.**
+
+## Context
+
+The user asked for a slider to restrict which names are considered by a birth-year range.
+The obvious approach — switch `build_corpus.py` to babynamesIL's yearly file
+(`babynamesIL.csv`) as the primary source — was tried first and rejected after measuring
+its actual effect: that file uses a **stricter** inclusion threshold (≥5 children in a
+single year, vs. the totals file's ≥5-summed-across-all-years), and covers only 5,708 of
+the corpus's 19,884 names. Switching to it entirely would have silently dropped 71% of the
+corpus just to add a filter — a real regression disguised as a feature. Caught by actually
+measuring the row/name counts before committing to a design, not by assumption.
+
+## What was built
+
+**Data pipeline**: `build_corpus.py` now fetches both babynamesIL files and produces two
+outputs — `name_corpus.csv` (unchanged: the full 19,882-name corpus, from the totals file)
+and a new supplementary `name_years.csv` (159,678 rows, `(name, sex, sector, year)`, years
+1949–2024, covering 5,706 of the corpus names). The year filter only ever narrows the
+*candidate set* for a search; it never changes what embeddings exist or what autocomplete
+finds.
+
+**Backend**: `CorpusStore` gained `years_df`, `year_min`/`year_max` (dataset bounds),
+`is_full_year_range()`, and `year_filtered_meta()` (an on-the-fly per-name aggregate over
+just the requested year span — same shape as the existing full-corpus metadata, computed
+via one pandas groupby, shared logic factored into `_compute_meta()`). `search_service`
+resolves which metadata source to rank against ONCE per request
+(`_resolve_meta_source` — the full corpus metadata when the requested range covers the
+whole dataset, otherwise the year-filtered dict), so the per-candidate ranking loop is still
+plain `dict.get()` lookups, not per-candidate pandas calls. A name absent from a
+year-filtered dict is excluded (no evidence in that range), never falls back to full-corpus
+data. `SearchRequest` gained `year_min`/`year_max` (`int | None`, both `None` = no filter,
+validated `year_min <= year_max`). `/api/health` reports the dataset's actual year bounds so
+the frontend can size the slider without hardcoding them.
+
+**Frontend**: `YearRangeSlider` — a dual-handle "ruler" built from two overlapping native
+`<input type="range">` elements (a well-known dependency-free technique) rather than a
+custom drag implementation or an external slider library, so keyboard/touch/accessibility
+come from the browser for free. `useNameSearch` fetches `/api/health` once on mount to learn
+the real year bounds (falls back to a hardcoded 1949–2024 if that fails, so the slider still
+renders sensibly). The full-range state maps to `yearMin: null, yearMax: null` in the
+request (matching the backend's "no filter" semantics exactly), not to explicit bound
+values.
+
+## Testing
+
+`test_corpus_store.py` gained 5 tests using two real names with genuinely narrow,
+non-overlapping year presence (אילאן: 2015–2024 only; זינובי: 1949–1960 only) — chosen by
+querying the actual data, not fabricated. `test_search.py` gained tests for: year-range
+narrowing actually excluding a known-absent name, `year_min > year_max` rejection (422), and
+that requesting the exact full dataset span produces byte-identical results to omitting the
+filter entirely (locks in the "full range == no filter" equivalence). `test_health.py`
+gained a year-bounds test. Frontend: `YearRangeSlider.test.tsx` (5 tests: full-range label,
+narrowed label, both handles' clamping behavior, disabled state).
+
+## Verification — all done
+
+- ✅ Backend: 45 pytest tests (9 new) + 1 xpass, `ruff check .` clean.
+- ✅ Frontend: 19 Vitest tests (5 new), `tsc -b` clean, oxlint clean, prod build succeeds.
+- ✅ End-to-end in a real headless browser: slider shows "כל השנים" (all years) at the full
+  range; dragging the lower handle to 2015 updates the label to "2015–2024" and visibly
+  changes the suggestion list to period-appropriate names; screenshot reviewed; zero console
+  errors.
+- Hit the same environment snag as Phase 4 again during verification (stale suspended dev
+  server holding a port) plus a new variant (a stale server from an *earlier* verification
+  session, still bound to the port, silently serving stale responses while a new instance
+  failed to bind) — both resolved with `kill -9` + restart + explicit health-response
+  inspection to confirm the *actual* running code, not just "did curl get a 200". Worth
+  being more disciplined about checking bind errors in the log immediately after each
+  restart, rather than only checking curl's exit status.
+
+### Critical files
+
+- `backend/scripts/build_corpus.py`
+- `backend/src/nameme/corpus/loader.py`
+- `backend/src/nameme/services/search_service.py`
+- `backend/src/nameme/schemas/search.py`
+- `frontend/src/components/YearRangeSlider.tsx` (new)
+- `frontend/src/hooks/useNameSearch.ts`

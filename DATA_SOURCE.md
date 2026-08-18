@@ -19,22 +19,36 @@ wraps official Israeli given-name data published by the Central Bureau of Statis
 
 ## How the corpus was built
 
-`backend/scripts/build_corpus.py` downloads the totals CSV from the pinned commit above,
-keeps one row per `(name, sex, sector)` combination — **sector** is CBS's population-group
-breakdown (Jewish / Muslim / Christian-Arab / Druze, the "tabs" the source release is
-organized by), which the app uses for the sex/sector search filters and is *not* aggregated
-away — drops a small number of non-Hebrew-script entries (encoding artifacts), and writes
-the result to `backend/src/nameme/artifacts/name_corpus.csv`. Result: 28,623 rows across
-19,882 unique names.
+`backend/scripts/build_corpus.py` downloads **two** files from the pinned commit above and
+writes two outputs:
+
+1. **`data-raw/babynamesIL_totals.csv`** (lifetime totals, threshold: ≥5 children in a
+   year/sector/sex combo, summed across all years) → `name_corpus.csv` — the FULL corpus:
+   one row per `(name, sex, sector)`. **sector** is CBS's population-group breakdown
+   (Jewish / Muslim / Christian-Arab / Druze, the "tabs" the source release is organized
+   by), used for the sex/sector search filters and *not* aggregated away. 28,623 rows
+   across 19,882 unique names — every name the app knows about, what embeddings are fit on.
+2. **`data-raw/babynamesIL.csv`** (yearly breakdown, a *stricter* threshold: ≥5 children in
+   a **single** year) → `name_years.csv` — one row per `(name, sex, sector, year)`, powers
+   the year-range "ruler" filter. 159,678 rows, years 1949–2024, but only **5,706 of the
+   19,882 corpus names** meet this file's stricter threshold. This is deliberately kept
+   separate from (1) rather than used as the primary corpus source: switching to it
+   entirely would silently drop 71% of the corpus. Names without a yearly breakdown remain
+   fully searchable with no year filter applied; they're excluded only when a year range
+   narrower than the full 1949–2024 span is requested, since there's no evidence of which
+   years they were actually given in.
+
+Both steps drop a small number of non-Hebrew-script entries (encoding artifacts) first.
 
 ## Refreshing the data
 
 This is a manual, occasional step — not an automated pipeline. To refresh:
 1. Check https://github.com/aviezerl/babynamesIL for a newer CBS release.
 2. Update `SOURCE_COMMIT` in `backend/scripts/build_corpus.py` to the new commit SHA.
-3. Re-run `uv run python scripts/build_corpus.py` from `backend/`.
+3. Re-run `uv run python scripts/build_corpus.py` from `backend/` (rebuilds both
+   `name_corpus.csv` and `name_years.csv`).
 4. Re-run `uv run python scripts/build_artifacts.py` to refit the embedder/PCA on the
-   updated corpus.
+   updated corpus (only needed if `name_corpus.csv`'s name list changed).
 5. Update the pinned commit and fetch date in this file.
 
 ## Known limitation

@@ -11,6 +11,13 @@ def test_health_ok(client: TestClient) -> None:
     assert body["corpus_size"] > 0
 
 
+def test_health_reports_year_bounds(client: TestClient) -> None:
+    resp = client.get("/api/health")
+    body = resp.json()
+    assert body["year_min"] == 1949
+    assert body["year_max"] == 2024
+
+
 def test_health_reports_both_models(client: TestClient) -> None:
     resp = client.get("/api/health")
     body = resp.json()

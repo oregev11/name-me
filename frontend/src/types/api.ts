@@ -12,6 +12,9 @@ export interface SearchFilters {
   sector: SectorFilter;
   popularity: PopularityFilter;
   sort: SortMode;
+  // Both null means "no year filter" (the full dataset range).
+  yearMin: number | null;
+  yearMax: number | null;
 }
 
 export interface NamePoint {
@@ -47,4 +50,6 @@ export interface HealthResponse {
   status: string;
   corpus_size: number;
   models: ModelInfo[];
+  year_min: number;
+  year_max: number;
 }

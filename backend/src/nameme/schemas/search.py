@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 ModelId = Literal["written_similarity", "cultural_similarity"]
 SexFilter = Literal["any", "M", "F"]
@@ -34,6 +34,12 @@ class SearchRequest(BaseModel):
     sector: SectorFilter = "any"
     popularity: PopularityFilter = "all"
     sort: SortMode = "similar"
+    # None on either side means "no lower/upper bound" -- the year-range
+    # "ruler" filter. Names with no yearly breakdown available (see
+    # scripts/build_corpus.py) are excluded only when this narrows the
+    # range below the full dataset span; see CorpusStore.is_full_year_range.
+    year_min: int | None = None
+    year_max: int | None = None
 
     @field_validator("liked_names")
     @classmethod
@@ -43,6 +49,16 @@ class SearchRequest(BaseModel):
             if not name or not HEBREW_NAME_RE.match(name):
                 raise ValueError(f"{name!r} is not a valid Hebrew name")
         return cleaned
+
+    @model_validator(mode="after")
+    def validate_year_range(self) -> SearchRequest:
+        if (
+            self.year_min is not None
+            and self.year_max is not None
+            and self.year_min > self.year_max
+        ):
+            raise ValueError("year_min must be <= year_max")
+        return self
 
 
 class NamePoint(BaseModel):
@@ -81,3 +97,8 @@ class HealthResponse(BaseModel):
     status: str
     corpus_size: int
     models: list[ModelInfo]
+    # Dataset-wide bounds for the year-range filter -- the frontend uses
+    # these to size the slider correctly (see backend/scripts/build_corpus.py
+    # for why not every corpus name has yearly data within this range).
+    year_min: int
+    year_max: int

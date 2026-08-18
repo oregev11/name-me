@@ -6,6 +6,7 @@ import { NameInput } from "./components/NameInput";
 import { ScatterChart } from "./components/ScatterChart";
 import { SearchFilters } from "./components/SearchFilters";
 import { SuggestionsList } from "./components/SuggestionsList";
+import { YearRangeSlider } from "./components/YearRangeSlider";
 import { useNameSearch } from "./hooks/useNameSearch";
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
     likedNames,
     model,
     filters,
+    yearBounds,
     result,
     loading,
     error,
@@ -27,6 +29,21 @@ function App() {
       <ModelToggle value={model} onChange={setModel} disabled={loading} />
       <NameInput onAdd={addName} disabled={loading} />
       <LikedNameChips names={likedNames} onRemove={removeName} />
+      <YearRangeSlider
+        min={yearBounds.min}
+        max={yearBounds.max}
+        value={[
+          filters.yearMin ?? yearBounds.min,
+          filters.yearMax ?? yearBounds.max,
+        ]}
+        onChange={([yearMin, yearMax]) =>
+          setFilters({
+            yearMin: yearMin === yearBounds.min ? null : yearMin,
+            yearMax: yearMax === yearBounds.max ? null : yearMax,
+          })
+        }
+        disabled={loading}
+      />
       <SearchFilters value={filters} onChange={setFilters} disabled={loading} />
 
       {loading && (

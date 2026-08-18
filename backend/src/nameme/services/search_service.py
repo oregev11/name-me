@@ -1,8 +1,8 @@
 """Core search logic: encode liked names -> centroid ("middle point") ->
 cosine similarity against the corpus -> top-K suggestions (closest by
 default, or farthest in "dissimilar" mode), all projected into the shared
-2D PCA space. Suggestions can be filtered by sex and by popularity
-percentile before the top-K cut is taken.
+2D PCA space. Suggestions can be filtered by sex, sector, popularity
+percentile, and a year range before the top-K cut is taken.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from nameme.corpus.loader import CorpusStore, ModelStore
+from nameme.corpus.loader import CorpusStore, ModelStore, combos_match
 from nameme.schemas.search import (
     NamePoint,
     PopularityFilter,
@@ -50,6 +50,25 @@ def _encode_liked_names(model: ModelStore, liked_names: list[str]) -> np.ndarray
     return np.stack(vectors, axis=0)
 
 
+def _resolve_meta_source(
+    store: CorpusStore, year_min: int | None, year_max: int | None
+) -> dict[str, dict]:
+    """Picks which per-name metadata to filter/rank against: the full
+    (all-years) corpus metadata by default, or an on-the-fly metadata dict
+    computed from only the years within [year_min, year_max] when that's
+    narrower than the dataset's full span (a "ruler" year-range filter).
+
+    Computed ONCE per request (a single pandas groupby over the ~160K-row
+    year breakdown), not per-candidate -- the ranking loop below does O(1)
+    dict lookups against whichever dict this returns.
+    """
+    eff_min = year_min if year_min is not None else store.year_min
+    eff_max = year_max if year_max is not None else store.year_max
+    if store.is_full_year_range(eff_min, eff_max):
+        return store.full_meta()
+    return store.year_filtered_meta(eff_min, eff_max)
+
+
 def search(
     store: CorpusStore,
     liked_names: list[str],
@@ -59,6 +78,8 @@ def search(
     sector: SectorFilter = "any",
     popularity: PopularityFilter = "all",
     sort: SortMode = "similar",
+    year_min: int | None = None,
+    year_max: int | None = None,
 ) -> SearchResponse:
     model = store.model(model_id)
 
@@ -73,15 +94,21 @@ def search(
     ranked_idx = np.argsort(-similarities) if sort == "similar" else np.argsort(similarities)
 
     min_percentile = _POPULARITY_THRESHOLDS[popularity]
+    meta_source = _resolve_meta_source(store, year_min, year_max)
 
     suggestion_idx = []
     for idx in ranked_idx:
         name = model.unique_names[idx]
         if name in liked_set:
             continue
-        if not store.matches_sex_sector(name, sex, sector):
+        meta = meta_source.get(name)
+        # Absent from a year-filtered meta_source means "no evidence this
+        # name was given within that range" -- excluded, not a fallback to
+        # the full-corpus metadata.
+        if meta is None:
             continue
-        meta = store.meta_for(name)
+        if not combos_match(meta["combos"], sex, sector):
+            continue
         if meta["percentile"] < min_percentile:
             continue
         suggestion_idx.append(idx)
@@ -99,7 +126,7 @@ def search(
     suggestions = []
     for idx, (x, y) in zip(suggestion_idx, suggestion_coords, strict=True):
         name = model.unique_names[idx]
-        meta = store.meta_for(name)
+        meta = meta_source[name]
         suggestions.append(
             SuggestedName(
                 name=name,

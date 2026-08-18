@@ -18,6 +18,12 @@ from nameme.corpus.loader import load_corpus_store
 # row membership instead -- see CorpusStore.matches_sex_sector).
 UNISEX_NAME = "דניאל"
 
+# Real names with a narrow, non-overlapping year presence in the yearly
+# breakdown -- useful for exercising the year-range filter precisely.
+# RECENT_ONLY_NAME only appears 2015-2024; OLD_ONLY_NAME only 1949-1960.
+RECENT_ONLY_NAME = "אילאן"
+OLD_ONLY_NAME = "זינובי"
+
 
 @pytest.fixture(scope="module")
 def store():
@@ -71,3 +77,38 @@ def test_overall_total_sums_across_sex_and_sector(store) -> None:
     # a real sum across rows, not accidentally just one row's value).
     assert meta["total"] > 0
     assert len(combos) >= 2  # at least the M and F rows found above
+
+
+def test_year_bounds_match_the_dataset(store) -> None:
+    assert store.year_min == 1949
+    assert store.year_max == 2024
+
+
+def test_is_full_year_range(store) -> None:
+    assert store.is_full_year_range(store.year_min, store.year_max) is True
+    assert store.is_full_year_range(store.year_min - 10, store.year_max + 10) is True
+    assert store.is_full_year_range(store.year_min, store.year_max - 1) is False
+    assert store.is_full_year_range(store.year_min + 1, store.year_max) is False
+
+
+def test_year_filtered_meta_excludes_names_outside_the_range(store) -> None:
+    old_range = store.year_filtered_meta(1949, 1960)
+    recent_range = store.year_filtered_meta(2015, 2024)
+
+    assert OLD_ONLY_NAME in old_range
+    assert RECENT_ONLY_NAME not in old_range
+
+    assert RECENT_ONLY_NAME in recent_range
+    assert OLD_ONLY_NAME not in recent_range
+
+
+def test_year_filtered_meta_totals_reflect_only_the_range(store) -> None:
+    # Popularity within a narrow range must be <= the all-time total, since
+    # it's summing strictly fewer rows.
+    narrow = store.year_filtered_meta(2015, 2024)
+    assert narrow[RECENT_ONLY_NAME]["total"] <= store.meta_for(RECENT_ONLY_NAME)["total"]
+
+
+def test_year_filtered_meta_empty_range_returns_empty(store) -> None:
+    # A range entirely outside the dataset's span has no rows to aggregate.
+    assert store.year_filtered_meta(1800, 1801) == {}

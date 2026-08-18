@@ -48,9 +48,9 @@ full sequence diagram of a search request end to end. The short version:
 
 | Endpoint | Method | Request body / params | Response |
 |---|---|---|---|
-| `/api/search` | POST | `{liked_names: string[], top_k?: number (default 20), model?: "written_similarity"\|"cultural_similarity", sex?: "any"\|"M"\|"F", sector?: "any"\|"Jewish"\|"Muslim"\|"Christian-Arab"\|"Druze", popularity?: "all"\|"top_10_percent"\|"top_90_percent", sort?: "similar"\|"dissimilar"}` | `{liked: NamePoint[], suggestions: SuggestedName[]}` |
+| `/api/search` | POST | `{liked_names: string[], top_k?: number (default 20), model?: "written_similarity"\|"cultural_similarity", sex?: "any"\|"M"\|"F", sector?: "any"\|"Jewish"\|"Muslim"\|"Christian-Arab"\|"Druze", popularity?: "all"\|"top_10_percent"\|"top_90_percent", sort?: "similar"\|"dissimilar", year_min?: number\|null, year_max?: number\|null}` | `{liked: NamePoint[], suggestions: SuggestedName[]}` |
 | `/api/autocomplete` | GET | `?q=<prefix>&limit=<n>` | `{matches: string[]}` |
-| `/api/health` | GET | — | `{status, corpus_size, models: ModelInfo[]}` |
+| `/api/health` | GET | — | `{status, corpus_size, models: ModelInfo[], year_min, year_max}` |
 
 `top_k`'s default of 20 matches the "find the middle point, then the 20 closest names"
 brief — the middle point is the liked names' centroid, computed in
@@ -61,7 +61,12 @@ independently — `CorpusStore.matches_sex_sector()` requires a real `(sex, sect
 the name, so e.g. `sex=F, sector=Jewish` won't match a name whose only female usage is
 Muslim. `sort: "dissimilar"` reverses which end of the same similarity ranking gets walked
 (farthest first instead of closest first) — useful for finding names that deliberately
-don't resemble your liked names.
+don't resemble your liked names. `year_min`/`year_max` (both `null` by default = no filter)
+restrict candidates to names with evidence of use in that span, via a supplementary
+per-year breakdown (`name_years.csv`) that only covers a subset of the corpus — see
+`DATA_SOURCE.md` and `CorpusStore.year_filtered_meta()`. `/api/health`'s `year_min`/
+`year_max` report the dataset's actual span (1949–2024) so the frontend can size its
+year-range slider correctly.
 
 `NamePoint = {name, x, y}`; `SuggestedName` adds `similarity` (cosine, in `[-1,1]` though
 `written_similarity`'s non-negative TF-IDF vectors keep it in `[0,1]` in practice), `sex`
@@ -105,6 +110,12 @@ is the one that actually matters for correctness.
   `vector_for(name)` first and only calls the live embedder for names outside the corpus —
   see the root README's "Memory footprint" section for why this matters for
   `cultural_similarity` specifically.
+- The year-range filter resolves its metadata source ONCE per request
+  (`_resolve_meta_source`), not per candidate: the full (all-years) `CorpusStore` metadata
+  when no year filter narrows the range, or a fresh `year_filtered_meta()` dict (one pandas
+  groupby over `name_years.csv`) otherwise. The ranking loop then does plain `dict.get()`
+  lookups against whichever was resolved — a name absent from a year-filtered dict means "no
+  evidence in that range", not "fall back to the full corpus".
 - Search is stateless: `POST /api/search` takes the full `liked_names` list each call; the
   frontend owns the "refine" loop by adding/removing names (or switching models) and
   resubmitting.

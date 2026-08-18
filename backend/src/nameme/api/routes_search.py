@@ -23,4 +23,6 @@ def search_names(
         sector=body.sector,
         popularity=body.popularity,
         sort=body.sort,
+        year_min=body.year_min,
+        year_max=body.year_max,
     )

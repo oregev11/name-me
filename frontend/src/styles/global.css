@@ -230,6 +230,111 @@ input {
   cursor: default;
 }
 
+.year-range {
+  margin-bottom: 1.5rem;
+}
+
+.year-range-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.year-range-values {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.year-range-track {
+  position: relative;
+  height: 28px;
+}
+
+.year-range-rail {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.year-range-fill {
+  position: absolute;
+  top: 12px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.year-range-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.year-range-track input[type="range"]::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  height: 4px;
+  background: transparent;
+}
+
+.year-range-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.year-range-track input[type="range"]::-moz-range-track {
+  height: 4px;
+  background: transparent;
+}
+
+.year-range-track input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.year-range-track input[type="range"]:disabled::-webkit-slider-thumb {
+  background: var(--text-muted);
+  cursor: default;
+}
+
+.year-range-track input[type="range"]:disabled::-moz-range-thumb {
+  background: var(--text-muted);
+  cursor: default;
+}
+
+.year-range-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
 .status {
   color: var(--text-muted);
 }

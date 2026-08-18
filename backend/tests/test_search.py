@@ -132,6 +132,44 @@ def test_search_filters_by_popularity_top_10_percent(client: TestClient) -> None
     assert min(s["popularity"] for s in top10) >= min(s["popularity"] for s in all_names)
 
 
+def test_search_filters_by_year_range(client: TestClient) -> None:
+    # אילאן only has a yearly breakdown for 2015-2024; requesting an
+    # earlier range must exclude it, requesting its actual range must not.
+    old_range = client.post(
+        "/api/search",
+        json={"liked_names": ["דוד"], "top_k": 50, "year_min": 1949, "year_max": 1960},
+    ).json()["suggestions"]
+    recent_range = client.post(
+        "/api/search",
+        json={"liked_names": ["דוד"], "top_k": 50, "year_min": 2015, "year_max": 2024},
+    ).json()["suggestions"]
+
+    assert "אילאן" not in {s["name"] for s in old_range}
+    # (Not asserting אילאן appears in recent_range -- it may simply not be
+    # similar enough to "דוד" to rank in the top 50; the exclusion above is
+    # the precise, always-true claim. See test_corpus_store.py for the
+    # direct membership check.)
+    assert {s["name"] for s in old_range} != {s["name"] for s in recent_range}
+
+
+def test_search_rejects_year_min_greater_than_year_max(client: TestClient) -> None:
+    resp = client.post(
+        "/api/search", json={"liked_names": ["דוד"], "year_min": 2020, "year_max": 2000}
+    )
+    assert resp.status_code == 422
+
+
+def test_search_full_year_range_matches_no_year_filter(client: TestClient) -> None:
+    unfiltered = client.post(
+        "/api/search", json={"liked_names": ["דוד"], "top_k": 10}
+    ).json()
+    full_range = client.post(
+        "/api/search",
+        json={"liked_names": ["דוד"], "top_k": 10, "year_min": 1949, "year_max": 2024},
+    ).json()
+    assert unfiltered == full_range
+
+
 def test_search_dissimilar_sort_reverses_ranking(client: TestClient) -> None:
     similar = client.post(
         "/api/search", json={"liked_names": ["דוד"], "top_k": 10, "sort": "similar"}

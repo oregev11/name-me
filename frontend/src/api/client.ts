@@ -1,5 +1,6 @@
 import type {
   AutocompleteResponse,
+  HealthResponse,
   ModelId,
   SearchFilters,
   SearchResponse,
@@ -37,6 +38,8 @@ export function searchNames(
       sector: filters.sector,
       popularity: filters.popularity,
       sort: filters.sort,
+      year_min: filters.yearMin,
+      year_max: filters.yearMax,
     }),
   });
 }
@@ -49,4 +52,8 @@ export function autocompleteNames(
   return request<AutocompleteResponse>(
     `/api/autocomplete?${params.toString()}`,
   );
+}
+
+export function getHealth(): Promise<HealthResponse> {
+  return request<HealthResponse>("/api/health");
 }
