@@ -1,6 +1,15 @@
 // Mirrors backend/src/nameme/schemas/search.py
 
 export type ModelId = "written_similarity" | "cultural_similarity";
+export type SexFilter = "any" | "M" | "F";
+export type PopularityFilter = "all" | "top_10_percent" | "top_90_percent";
+export type SortMode = "similar" | "dissimilar";
+
+export interface SearchFilters {
+  sex: SexFilter;
+  popularity: PopularityFilter;
+  sort: SortMode;
+}
 
 export interface NamePoint {
   name: string;

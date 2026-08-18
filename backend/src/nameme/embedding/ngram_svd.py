@@ -1,8 +1,17 @@
 """MVP name embedder: character n-gram TF-IDF reduced via truncated SVD.
 
-Requires no training corpus beyond the name list itself, no external model
-download, and generalizes to out-of-vocabulary names because it operates on
-character substrings rather than whole-name identity.
+Requires no external model download, and generalizes to out-of-vocabulary
+names because it operates on character substrings rather than whole-name
+identity.
+
+The TF-IDF vectorizer's vocabulary and document-frequency weighting can
+optionally be fit on a separate, larger background corpus of general Hebrew
+words (see `fit_corpus`'s `background_corpus` param) rather than on the name
+list itself -- this judges how rare/common a given substring really is
+against real Hebrew usage, instead of against the biased, comparatively
+small sample of spellings that happen to be given names. The dimensionality
+reduction (SVD) is still fit on the actual name vectors, since that's the
+entity set the model needs to discriminate between.
 """
 
 from __future__ import annotations
@@ -28,8 +37,19 @@ class NgramSvdEmbedder:
         )
         self._fitted = False
 
-    def fit_corpus(self, names: list[str]) -> None:
-        self._pipeline.fit(names)
+    def fit_corpus(self, names: list[str], background_corpus: list[str] | None = None) -> None:
+        vectorizer: TfidfVectorizer = self._pipeline.named_steps["tfidf"]
+        svd: TruncatedSVD = self._pipeline.named_steps["svd"]
+
+        # Vocabulary + IDF weights come from the background corpus when
+        # given (a much larger, representative sample of Hebrew words) --
+        # otherwise fall back to fitting on the names themselves, same as
+        # before. Either way, SVD is fit on the *names'* vectors: it needs
+        # to capture variance among the ~20K names we actually serve, not
+        # among the whole background vocabulary.
+        vectorizer.fit(background_corpus if background_corpus else names)
+        name_vectors = vectorizer.transform(names)
+        svd.fit(name_vectors)
         self._fitted = True
 
     def encode(self, names: list[str]) -> np.ndarray:

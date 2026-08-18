@@ -1,6 +1,7 @@
 import type {
   AutocompleteResponse,
   ModelId,
+  SearchFilters,
   SearchResponse,
 } from "../types/api";
 
@@ -23,11 +24,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export function searchNames(
   likedNames: string[],
   model: ModelId,
-  topK = 10,
+  filters: SearchFilters,
+  topK = 20,
 ): Promise<SearchResponse> {
   return request<SearchResponse>("/api/search", {
     method: "POST",
-    body: JSON.stringify({ liked_names: likedNames, top_k: topK, model }),
+    body: JSON.stringify({
+      liked_names: likedNames,
+      top_k: topK,
+      model,
+      sex: filters.sex,
+      popularity: filters.popularity,
+      sort: filters.sort,
+    }),
   });
 }
 

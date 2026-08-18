@@ -53,13 +53,17 @@ class CorpusStore:
             .drop_duplicates(subset="name", keep="first")
             .set_index("name")
         )
+        # Percentile rank by popularity, 0..1, higher = more popular. Powers
+        # the "top 10% / top 90% of names" filter -- computed once here so a
+        # search request is just a threshold comparison, not a full re-rank.
+        meta["percentile"] = meta["total"].rank(pct=True)
         self._meta_by_name = meta.to_dict(orient="index")
         # Precomputed once so autocomplete requests only filter, not sort.
         self.names_by_popularity = meta.index.tolist()
         self.corpus_size = len(meta)
 
     def meta_for(self, name: str) -> dict:
-        return self._meta_by_name.get(name, {"sex": "U", "total": 0})
+        return self._meta_by_name.get(name, {"sex": "U", "total": 0, "percentile": 0.0})
 
     def model(self, model_id: str) -> ModelStore:
         try:

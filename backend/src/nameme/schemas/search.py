@@ -8,6 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 ModelId = Literal["written_similarity", "cultural_similarity"]
+SexFilter = Literal["any", "M", "F"]
+PopularityFilter = Literal["all", "top_10_percent", "top_90_percent"]
+SortMode = Literal["similar", "dissimilar"]
 
 # Same shape as the filter used when building the corpus (see
 # scripts/build_corpus.py) -- keeps user input restricted to Hebrew script so
@@ -18,10 +21,15 @@ HEBREW_NAME_RE = re.compile(r"^[א-ת][א-ת \-'\"]*$")
 
 class SearchRequest(BaseModel):
     liked_names: list[str] = Field(..., min_length=1, max_length=10)
-    top_k: int = Field(default=10, ge=1, le=30)
+    # Default of 20: find the "middle point" (centroid) of the liked names,
+    # then the 20 closest names to it.
+    top_k: int = Field(default=20, ge=1, le=50)
     # Default preserves the pre-multi-model behavior for any existing caller
     # that omits this field.
     model: ModelId = "written_similarity"
+    sex: SexFilter = "any"
+    popularity: PopularityFilter = "all"
+    sort: SortMode = "similar"
 
     @field_validator("liked_names")
     @classmethod

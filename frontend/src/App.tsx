@@ -1,8 +1,10 @@
+import { Footer } from "./components/Footer";
 import { Layout } from "./components/Layout";
 import { LikedNameChips } from "./components/LikedNameChips";
 import { ModelToggle } from "./components/ModelToggle";
 import { NameInput } from "./components/NameInput";
 import { ScatterChart } from "./components/ScatterChart";
+import { SearchFilters } from "./components/SearchFilters";
 import { SuggestionsList } from "./components/SuggestionsList";
 import { useNameSearch } from "./hooks/useNameSearch";
 
@@ -10,12 +12,14 @@ function App() {
   const {
     likedNames,
     model,
+    filters,
     result,
     loading,
     error,
     addName,
     removeName,
     setModel,
+    setFilters,
   } = useNameSearch();
 
   return (
@@ -23,6 +27,7 @@ function App() {
       <ModelToggle value={model} onChange={setModel} disabled={loading} />
       <NameInput onAdd={addName} disabled={loading} />
       <LikedNameChips names={likedNames} onRemove={removeName} />
+      <SearchFilters value={filters} onChange={setFilters} disabled={loading} />
 
       {loading && (
         <p className="status">מחפש שמות דומים... (עד דקה בהפעלה ראשונה)</p>
@@ -46,6 +51,8 @@ function App() {
           <SuggestionsList suggestions={result.suggestions} onAdd={addName} />
         </section>
       )}
+
+      <Footer />
     </Layout>
   );
 }

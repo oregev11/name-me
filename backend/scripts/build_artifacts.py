@@ -27,6 +27,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from background_corpus import fetch_background_corpus  # noqa: E402
 from pipeline_status import PipelineStatus  # noqa: E402
 
 from nameme.config import ARTIFACTS_DIR  # noqa: E402
@@ -84,14 +85,25 @@ def _sanity_check_cultural_similarity(embedder) -> None:
         print(f"    control  sim({b!r}, {UNRELATED_CONTROL!r}) = {control_b:.3f}")
 
 
-def _build_one(spec: ModelSpec, unique_names: list[str], status: PipelineStatus) -> None:
+def _build_one(
+    spec: ModelSpec,
+    unique_names: list[str],
+    status: PipelineStatus,
+    background_corpus: list[str] | None = None,
+) -> None:
     print(f"\n=== {spec.id} ({spec.display_name_he}) ===")
     status.step(f"building {spec.id}")
     model_dir = ARTIFACTS_DIR / spec.artifacts_subdir
     model_dir.mkdir(parents=True, exist_ok=True)
 
     embedder = spec.new_embedder(model_dir)
-    embedder.fit_corpus(unique_names)
+    if spec.id == "written_similarity" and background_corpus:
+        # Fit the TF-IDF vectorizer's vocabulary/IDF weights against a much
+        # larger, representative sample of Hebrew words instead of only the
+        # ~20K names -- see NgramSvdEmbedder.fit_corpus and DATA_SOURCE.md.
+        embedder.fit_corpus(unique_names, background_corpus=background_corpus)
+    else:
+        embedder.fit_corpus(unique_names)
     if spec.persisted_embedder:
         joblib.dump(embedder, model_dir / "embedder.joblib", compress=3)
         print(f"Wrote {model_dir / 'embedder.joblib'}")
@@ -152,8 +164,12 @@ def main() -> None:
     unique_names = corpus["name"].drop_duplicates().tolist()
     print(f"Building artifacts for {len(unique_names)} unique name spellings")
 
+    status.step("fetching background Hebrew word corpus")
+    background_corpus = fetch_background_corpus()
+    print(f"Fetched background corpus: {len(background_corpus)} Hebrew words")
+
     for spec in MODEL_REGISTRY.values():
-        _build_one(spec, unique_names, status)
+        _build_one(spec, unique_names, status, background_corpus=background_corpus)
 
     status.done()
 

@@ -526,9 +526,96 @@ never call the live embedder (fails loudly via a sabotaged mock if that invarian
 
 ## What's left (not done in this session)
 
-- Not yet committed to git (Phase 1's `db83632` is the only commit so far).
+- ~~Not yet committed to git~~ — committed as `4b3d0c2`.
 - Not yet deployed to Render/Vercel (needs account access — same as Phase 1).
 - Docker build itself still unverified (no Docker daemon in this sandbox).
 - The biggest remaining RAM lever (tokenizer vocabulary pruning to Hebrew-relevant tokens
   only) was identified but not attempted — worth doing if the worst-case ~700MB path turns
   out to matter in practice after deploying.
+
+---
+
+# Phase 3: TASKS..md items (search filters, background corpus, polish)
+
+**Status: DONE.** Implements every item in the user's `TASKS..md` (repo root) except item 7,
+which was blank.
+
+## Context
+
+The user dropped a `TASKS..md` file at the repo root with a short numbered wishlist and
+asked to implement it. Two items were ambiguous enough to be worth a clarifying question
+rather than guessing (see conversation): item 1 ("embedding is based on larger corpus and
+not names") was confirmed to mean `written_similarity`'s TF-IDF vectorizer should fit its
+IDF weighting against a larger general-Hebrew corpus, not just the ~20K names; item 5's
+GitHub link was confirmed to ship as an opt-in placeholder (`VITE_GITHUB_URL`) since no
+GitHub remote exists yet for this repo.
+
+## What was built, per task item
+
+0. **Middle point + 20 closest**: this was already the algorithm (centroid → cosine
+   similarity → top-K); bumped `SearchRequest.top_k`'s default from 10 to 20 to match the
+   brief literally, and its max from 30 to 50 so a user could ask for more.
+1. **Larger-corpus IDF for `written_similarity`**: `NgramSvdEmbedder.fit_corpus()` now
+   accepts an optional `background_corpus` — when given, the TF-IDF vectorizer's
+   vocabulary/IDF fits on it, while TruncatedSVD still fits on the *names'* resulting
+   vectors (SVD needs to discriminate among the ~20K names actually served, not the whole
+   background vocabulary). Background corpus: `hspell_simple.txt` from
+   `eyaler/hebrew_wordlists` (~130K individual Hebrew word forms, AGPL v3 — fetched fresh at
+   build time via `scripts/background_corpus.py`, never committed; see `DATA_SOURCE.md` for
+   the license disclosure). Measured effect on the existing sanity pairs: sim(דוד,דודי)
+   0.730→0.742 (roughly stable), sim(שרה,שרון) 0.368→0.301, sim(משה,מיכאל) 0.249→0.101 (both
+   meaningfully lower — consistent with those shared substrings being much more common in
+   general Hebrew than the names-only corpus implied, i.e. the fix is doing what it should).
+2. **Sex filter**: `SearchRequest.sex: "any"|"M"|"F"`, applied in `search_service.search()`
+   before the top-K cut. Frontend: `SearchFilters` component, a `<select>`.
+3. **Popularity percentile filter**: `SearchRequest.popularity: "all"|"top_10_percent"|
+   "top_90_percent"`. `CorpusStore.__post_init__` precomputes each name's popularity
+   percentile once (`total.rank(pct=True)`) so filtering is a cheap threshold check per
+   candidate, not a re-rank at request time.
+4. **Nicer visualization**: `ScatterChart` now splits suggestions into two colored series by
+   sex (blue/pink) instead of one flat color, adds a `ZAxis` bubble-size channel keyed on
+   real-world popularity, a legend, and a richer tooltip (similarity + sex + popularity).
+5. **GitHub + names-list links**: new `Footer` component. Names list: `name_corpus.csv` is
+   copied to `frontend/public/names.csv` and linked directly (static file, no new backend
+   endpoint) — needs a manual re-copy if the corpus is ever refreshed. GitHub: renders only
+   when `VITE_GITHUB_URL` is set (`.env.example` documents it) — deliberately not a fake/dead
+   link since no remote exists yet.
+6. **"Most different" mode**: `SearchRequest.sort: "similar"|"dissimilar"` — same similarity
+   ranking, walked from the other end (`np.argsort(similarities)` instead of
+   `np.argsort(-similarities)`). Frontend: two-button toggle in `SearchFilters`, matching
+   `ModelToggle`'s pattern.
+7. (blank in the source file — nothing to do)
+
+## Testing
+
+Backend: `tests/test_search.py` gained tests for the default top_k=20, sex filtering,
+popularity filtering, and dissimilar-sort reversal (asserting the two result sets are
+disjoint and correctly ordered). `tests/embedding/test_ngram_svd.py` gained tests for
+`fit_corpus` with and without a `background_corpus`. All via the existing pattern (real
+committed artifacts, no mocks, session-scoped fixtures). Frontend:
+`tests/SearchFilters.test.tsx` (5 tests, mirroring `ModelToggle.test.tsx`'s pattern).
+
+## Verification — all done
+
+- ✅ Backend: 28 pytest tests + 1 xpass, `ruff check .` clean.
+- ✅ Frontend: 13 Vitest tests, `tsc -b` clean, oxlint clean, prod build succeeds.
+- ✅ Re-ran `build_artifacts.py` end to end with the real background corpus fetch; both
+  models' artifacts rebuilt and committed; `written_similarity`'s new sanity numbers
+  recorded above; `cultural_similarity` unaffected (unchanged numbers, confirming the
+  background-corpus change is properly scoped to only the one model).
+- ✅ End-to-end in a real headless browser: default search returns exactly 20 suggestions;
+  sex filter narrows results; popularity filter narrows results; dissimilar-mode results are
+  completely disjoint from similar-mode results for the same query; legend + colored/sized
+  points render; `/names.csv` link returns `200`; zero console errors throughout.
+
+### Critical files
+
+- `backend/src/nameme/embedding/ngram_svd.py`
+- `backend/scripts/background_corpus.py` (new)
+- `backend/src/nameme/corpus/loader.py`
+- `backend/src/nameme/services/search_service.py`
+- `backend/src/nameme/schemas/search.py`
+- `frontend/src/components/SearchFilters.tsx` (new)
+- `frontend/src/components/Footer.tsx` (new)
+- `frontend/src/components/ScatterChart.tsx`
+- `frontend/src/hooks/useNameSearch.ts`

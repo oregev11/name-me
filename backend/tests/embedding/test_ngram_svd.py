@@ -43,3 +43,29 @@ def test_encode_handles_out_of_vocabulary_name(embedder: NgramSvdEmbedder) -> No
     vector = embedder.encode(["אביגיל"])
     assert vector.shape == (1, embedder.dim)
     assert np.all(np.isfinite(vector))
+
+
+def test_fit_corpus_accepts_a_background_corpus() -> None:
+    # The vectorizer's vocabulary/IDF can come from a separate, larger
+    # corpus while SVD still fits on the names themselves.
+    background = ["שלום", "בית", "ילד", "ילדה", "אהבה", "משפחה", "חיים", "אור", "שמש", "ים"]
+    e = NgramSvdEmbedder(n_components=5)
+    e.fit_corpus(CORPUS, background_corpus=background)
+
+    vectorizer = e._pipeline.named_steps["tfidf"]  # noqa: SLF001
+    # Vocabulary should include n-grams that only appear in the background
+    # words, not in any name -- proof the vectorizer was fit on `background`.
+    assert any("של" in term for term in vectorizer.vocabulary_)
+
+    vector = e.encode(["דוד"])
+    assert vector.shape == (1, 5)
+    assert np.all(np.isfinite(vector))
+
+
+def test_fit_corpus_without_background_corpus_still_works() -> None:
+    # Backward-compatible default: fit on the names themselves.
+    e = NgramSvdEmbedder(n_components=5)
+    e.fit_corpus(CORPUS)
+    vector = e.encode(["דוד"])
+    assert vector.shape == (1, 5)
+    assert np.all(np.isfinite(vector))

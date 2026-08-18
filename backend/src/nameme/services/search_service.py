@@ -1,6 +1,8 @@
-"""Core search logic: encode liked names -> centroid -> cosine similarity
-against the corpus -> top-K suggestions, all projected into the shared 2D
-PCA space.
+"""Core search logic: encode liked names -> centroid ("middle point") ->
+cosine similarity against the corpus -> top-K suggestions (closest by
+default, or farthest in "dissimilar" mode), all projected into the shared
+2D PCA space. Suggestions can be filtered by sex and by popularity
+percentile before the top-K cut is taken.
 """
 
 from __future__ import annotations
@@ -9,8 +11,25 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from nameme.corpus.loader import CorpusStore, ModelStore
-from nameme.schemas.search import NamePoint, SearchResponse, SuggestedName
+from nameme.schemas.search import (
+    NamePoint,
+    PopularityFilter,
+    SearchResponse,
+    SexFilter,
+    SortMode,
+    SuggestedName,
+)
 from nameme.services.projection_service import project_to_2d
+
+# Minimum popularity percentile (0..1, from CorpusStore.meta_for) a name must
+# have to pass each filter. "top_10_percent" keeps only the most popular
+# tenth of the corpus; "top_90_percent" excludes only the least popular
+# tenth (a much more permissive cut).
+_POPULARITY_THRESHOLDS: dict[PopularityFilter, float] = {
+    "all": 0.0,
+    "top_10_percent": 0.90,
+    "top_90_percent": 0.10,
+}
 
 
 def _encode_liked_names(model: ModelStore, liked_names: list[str]) -> np.ndarray:
@@ -30,21 +49,38 @@ def _encode_liked_names(model: ModelStore, liked_names: list[str]) -> np.ndarray
     return np.stack(vectors, axis=0)
 
 
-def search(store: CorpusStore, liked_names: list[str], top_k: int, model_id: str) -> SearchResponse:
+def search(
+    store: CorpusStore,
+    liked_names: list[str],
+    top_k: int,
+    model_id: str,
+    sex: SexFilter = "any",
+    popularity: PopularityFilter = "all",
+    sort: SortMode = "similar",
+) -> SearchResponse:
     model = store.model(model_id)
 
     liked_vectors = _encode_liked_names(model, liked_names)
-    centroid = liked_vectors.mean(axis=0, keepdims=True)
+    centroid = liked_vectors.mean(axis=0, keepdims=True)  # the "middle point"
 
     similarities = cosine_similarity(centroid, model.vectors)[0]
 
     liked_set = set(liked_names)
-    ranked_idx = np.argsort(-similarities)
+    # "similar": closest to the middle point first. "dissimilar": farthest
+    # first -- same ranking, just walked from the other end.
+    ranked_idx = np.argsort(-similarities) if sort == "similar" else np.argsort(similarities)
+
+    min_percentile = _POPULARITY_THRESHOLDS[popularity]
 
     suggestion_idx = []
     for idx in ranked_idx:
         name = model.unique_names[idx]
         if name in liked_set:
+            continue
+        meta = store.meta_for(name)
+        if sex != "any" and meta["sex"] != sex:
+            continue
+        if meta["percentile"] < min_percentile:
             continue
         suggestion_idx.append(idx)
         if len(suggestion_idx) == top_k:

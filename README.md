@@ -1,11 +1,13 @@
 # שם לי (name-me)
 
 A portfolio web app for choosing a Hebrew baby name with a little machine-learning help.
-Enter a couple of Hebrew names you like, and the app finds similar names by embedding them
-and running cosine similarity search over a corpus of ~20,000 real Hebrew given names — with
-the results plotted on a 2D map so you can see how names relate to each other, then refine
-by adding or removing names and re-searching. Two independent similarity models are live —
-pick either one, per search — see [below](#the-two-similarity-models).
+Enter a couple of Hebrew names you like, and the app finds the 20 closest names to their
+"middle point" by embedding them and running cosine similarity search over a corpus of
+~20,000 real Hebrew given names — with the results plotted on a 2D map so you can see how
+names relate to each other, then refine by adding/removing names, filtering by sex or
+popularity, or flipping to "most different" instead of "most similar." Two independent
+similarity models are live — pick either one, per search — see
+[below](#the-two-similarity-models).
 
 > **Status**: both models (`written_similarity` and `cultural_similarity`) are built, tested,
 > and verified end-to-end, including a live UI toggle between them. Not yet deployed to a
@@ -102,10 +104,10 @@ sequenceDiagram
     User->>NI: confirms a name (click suggestion or Enter)
     NI->>Hook: onAdd(name)
     Hook->>Hook: likedNames = [...likedNames, name]
-    Hook->>Client: searchNames(likedNames, model, topK)
-    Client->>API: POST /api/search {liked_names, top_k, model}
+    Hook->>Client: searchNames(likedNames, model, filters, topK)
+    Client->>API: POST /api/search {liked_names, top_k, model, sex, popularity, sort}
 
-    API->>Svc: search(store, liked_names, top_k, model)
+    API->>Svc: search(store, liked_names, top_k, model, sex, popularity, sort)
     Svc->>Store: vector_for(name) for each liked name
     Note over Svc,Store: precomputed corpus vectors are checked FIRST --<br/>the live embedder only runs for names outside<br/>the ~20K corpus (rare, since autocomplete steers<br/>users to known names). This is what keeps the<br/>cultural_similarity model's memory footprint low<br/>in the common case -- see README's RAM section.
     Store-->>Svc: vectors for the liked names
@@ -136,11 +138,33 @@ cosine similarity against a precomputed matrix (fast, vectorized numpy), and pro
 already-fitted 2D space. This is what keeps `/api/search` fast and keeps each model's scatter
 plot coordinate system stable as you refine your search within a session.
 
+## Search options
+
+Every search takes the liked names' centroid ("middle point") and finds the 20 closest (or,
+in "most different" mode, farthest) corpus names to it — configurable via:
+
+- **Model**: `written_similarity` or `cultural_similarity` (see below).
+- **Sex**: all / boys only / girls only.
+- **Popularity**: all names / top 10% most popular / top 90% (excludes only the least
+  popular decile) — computed once at startup as a percentile rank over the corpus, so
+  filtering is just a threshold check, not a re-rank.
+- **Sort**: most similar (default) or most different — same ranking, walked from the other
+  end, useful for finding names that deliberately *don't* resemble your liked names.
+
+The scatter plot colors suggestions by sex (blue/pink) and sizes each point by real-world
+popularity (a Recharts `ZAxis` bubble channel), with a legend and a richer tooltip (name,
+similarity, sex, popularity). The footer links to the full name list (`/names.csv`, a static
+copy of the corpus) and, once set, `VITE_GITHUB_URL` for a source-code link.
+
 ## The two similarity models
 
 - **`written_similarity`**: character n-gram TF-IDF → SVD. Captures pure *spelling*
-  similarity — "דוד" and "דודי" are close because they share substrings. No training data
-  beyond the name list itself; generalizes to names it's never seen. ~100-dim vectors.
+  similarity — "דוד" and "דודי" are close because they share substrings. The vectorizer's
+  vocabulary/IDF weighting is fit against a ~130K-word general Hebrew corpus (not just the
+  20K names — see `DATA_SOURCE.md`), so substring rarity reflects real Hebrew usage rather
+  than the biased sample of spellings that happen to be given names; the dimensionality
+  reduction (SVD) still fits on the names themselves. No training data download beyond that
+  background corpus fetch; generalizes to names it's never seen. ~100-dim vectors.
 - **`cultural_similarity`**: a pretrained multilingual sentence-transformer
   (`paraphrase-multilingual-MiniLM-L12-v2`, exported to ONNX + int8-quantized) embedding of
   the bare Hebrew name string, aiming to surface names that are culturally/biblically related

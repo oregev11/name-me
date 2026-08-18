@@ -48,9 +48,17 @@ full sequence diagram of a search request end to end. The short version:
 
 | Endpoint | Method | Request body / params | Response |
 |---|---|---|---|
-| `/api/search` | POST | `{liked_names: string[], top_k?: number, model?: "written_similarity"\|"cultural_similarity"}` | `{liked: NamePoint[], suggestions: SuggestedName[]}` |
+| `/api/search` | POST | `{liked_names: string[], top_k?: number (default 20), model?: "written_similarity"\|"cultural_similarity", sex?: "any"\|"M"\|"F", popularity?: "all"\|"top_10_percent"\|"top_90_percent", sort?: "similar"\|"dissimilar"}` | `{liked: NamePoint[], suggestions: SuggestedName[]}` |
 | `/api/autocomplete` | GET | `?q=<prefix>&limit=<n>` | `{matches: string[]}` |
 | `/api/health` | GET | — | `{status, corpus_size, models: ModelInfo[]}` |
+
+`top_k`'s default of 20 matches the "find the middle point, then the 20 closest names"
+brief — the middle point is the liked names' centroid, computed in
+`search_service.search()`. `popularity`'s percentile thresholds are precomputed once at
+startup (`CorpusStore.__post_init__`, `total.rank(pct=True)`) so filtering is a cheap
+threshold check per candidate, not a re-rank. `sort: "dissimilar"` reverses which end of the
+same similarity ranking gets walked (farthest first instead of closest first) — useful for
+finding names that deliberately don't resemble your liked names.
 
 `NamePoint = {name, x, y}`; `SuggestedName` adds `similarity` (cosine, in `[-1,1]` though
 `written_similarity`'s non-negative TF-IDF vectors keep it in `[0,1]` in practice), `sex`
@@ -69,8 +77,10 @@ is the one that actually matters for correctness.
 - `embedding/base.py` defines the `NameEmbedder` interface (`fit_corpus`, `encode`, `dim`).
   Two implementations exist today, both registered in `embedding/registry.py`'s
   `MODEL_REGISTRY` and served **simultaneously**:
-  - `embedding/ngram_svd.py` (`written_similarity`) — character n-gram TF-IDF + TruncatedSVD,
-    no training corpus needed beyond the name list itself.
+  - `embedding/ngram_svd.py` (`written_similarity`) — character n-gram TF-IDF + TruncatedSVD.
+    The vectorizer's vocabulary/IDF fit against a large background Hebrew word corpus (see
+    `scripts/background_corpus.py`, `DATA_SOURCE.md`) rather than only the names, so
+    substring rarity reflects real Hebrew usage; SVD still fits on the names' own vectors.
   - `embedding/onnx_sentence.py` (`cultural_similarity`) — a pretrained multilingual
     sentence-transformer served via `onnxruntime` (no torch/transformers at runtime — those
     are export-only, see the `export` dependency group in `pyproject.toml` and
