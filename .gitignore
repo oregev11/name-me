@@ -33,3 +33,4 @@ frontend/.vite/
 .vscode/
 .idea/
 .DS_Store
+backend/src/nameme/artifacts/cultural_similarity/model_quantized.onnx
