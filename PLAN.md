@@ -783,3 +783,49 @@ narrowed label, both handles' clamping behavior, disabled state).
 - `backend/src/nameme/schemas/search.py`
 - `frontend/src/components/YearRangeSlider.tsx` (new)
 - `frontend/src/hooks/useNameSearch.ts`
+
+---
+
+# Phase 6: Manual ML sanity-check notebook
+
+**Status: DONE.**
+
+## Context
+
+Requested: a way to manually poke at the ML logic directly, in a Jupyter notebook, using
+the actual project code rather than reimplemented logic.
+
+## What was built
+
+`backend/notebooks/ml_sanity_check.ipynb` — imports the real `nameme` package, loads the
+real committed artifacts via `load_corpus_store()`, and calls `search_service.search()`
+directly (no HTTP layer). Five sections: (1) direct embedder cosine-similarity checks
+bypassing search entirely, (2) full search via a `run_search()` helper returning a tidy
+DataFrame, accepting every filter keyword the real endpoint does, (3) a matplotlib version
+of the app's scatter plot (liked names as stars, suggestions colored/sized), (4) interactive
+versions of the `test_corpus_store.py`/`test_search.py` regression checks using the same
+real example names (`דניאל`, `אילאן`, `זינובי`), (5) a blank cell to experiment freely.
+
+Added a new non-default `notebook` uv dependency group (`jupyterlab`, `ipykernel`,
+`matplotlib`) — same pattern as the `export` group, kept out of the deployed image/CI.
+
+Generated via a throwaway `nbformat`-based script (not committed) rather than hand-typed
+JSON, then **actually executed end to end** (`jupyter execute --inplace`) before committing
+— the committed notebook's outputs are real, not placeholders, so it's self-documenting even
+unrun (e.g. on GitHub). All printed numbers match previously-verified values exactly (same
+sanity-check pairs as `build_artifacts.py`/`export_semantic_model.py`), and running it
+surfaced a nice live example of the sex-filter fix working correctly: "נועם" (a well-known
+unisex Israeli name, dominant sex M) correctly appears in a `sex="F"`-filtered search.
+
+## Verification
+
+- ✅ Notebook executes cleanly end to end with zero error outputs (verified programmatically
+  by inspecting the executed `.ipynb`'s cell outputs, not just "no exception thrown").
+- ✅ `ruff check .` covers the notebook too (modern ruff lints `.ipynb` cells) — clean.
+- ✅ Backend pytest suite (45 tests + 1 xpass) unaffected by the new dependency group.
+
+### Critical files
+
+- `backend/notebooks/ml_sanity_check.ipynb` (new)
+- `backend/notebooks/README.md` (new)
+- `backend/pyproject.toml` (new `notebook` dependency group)

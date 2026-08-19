@@ -41,6 +41,19 @@ uv run pytest
 uv run ruff check .
 ```
 
+## Manual ML sanity check
+
+`notebooks/ml_sanity_check.ipynb` loads the real `nameme` package and real committed
+artifacts (no reimplemented logic) for interactively comparing name pairs, running full
+filtered searches, and visualizing results:
+
+```bash
+uv sync --group notebook
+uv run jupyter lab notebooks/
+```
+
+See `notebooks/README.md`.
+
 ## API contract (what the frontend actually sends/receives)
 
 See the root [`README.md`](../README.md#data-flow-one-search-request-end-to-end) for the

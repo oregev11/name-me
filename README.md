@@ -219,9 +219,10 @@ becomes a real problem in practice.
 ## Project layout
 
 ```
-backend/    FastAPI service serving the embedding/search/autocomplete API
-frontend/   React + TypeScript + Vite single-page app
-PLAN.md     Living implementation plan (Phase 1 = MVP, Phase 2 = second model — both done)
+backend/              FastAPI service serving the embedding/search/autocomplete API
+backend/notebooks/    Manual ML sanity-check Jupyter notebook (real code, real artifacts)
+frontend/             React + TypeScript + Vite single-page app
+PLAN.md               Living implementation plan (Phase 1 = MVP, Phase 2 = second model — both done)
 ```
 
 See `backend/README.md` and `frontend/README.md` for per-service details.
@@ -232,6 +233,20 @@ See `backend/README.md` and `frontend/README.md` for per-service details.
 cd backend && uv run pytest && uv run ruff check .
 cd frontend && npm run test && npm run lint && npx tsc -b
 ```
+
+## Manual ML sanity check
+
+`backend/notebooks/ml_sanity_check.ipynb` loads the real `nameme` package and real
+committed model artifacts — no reimplemented logic — so you can manually compare name
+pairs, run full filtered searches, and eyeball results on a 2D map:
+
+```bash
+cd backend
+uv sync --group notebook
+uv run jupyter lab notebooks/
+```
+
+See `backend/notebooks/README.md` for what's in it.
 
 ## Deployment
 

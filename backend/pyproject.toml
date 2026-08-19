@@ -35,6 +35,15 @@ export = [
     "transformers>=4.45",
     "optimum[onnxruntime]>=2.0",
 ]
+# NON-default group: only installed via `uv sync --group notebook`. Powers
+# the manual ML sanity-check notebook in notebooks/ -- not a runtime or CI
+# dependency, so it's kept out of the deployed image and the default `dev`
+# group the same way `export` is.
+notebook = [
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+    "matplotlib>=3.9",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

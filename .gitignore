@@ -17,6 +17,9 @@ backend/scripts/pipeline_status.html
 # run.sh output
 .run-logs/
 
+# Jupyter (notebooks/ml_sanity_check.ipynb itself IS committed, with outputs)
+.ipynb_checkpoints/
+
 # Node
 node_modules/
 dist/
