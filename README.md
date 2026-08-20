@@ -1,6 +1,6 @@
 # שם לי (name-me)
 
-A portfolio web app for choosing a Hebrew baby name with a little machine-learning help.
+A web app for choosing a Hebrew baby name with a little machine-learning help.
 Enter a couple of Hebrew names you like, and the app finds the 20 closest names to their
 "middle point" by embedding them and running cosine similarity search over a corpus of
 ~20,000 real Hebrew given names — with the results plotted on a 2D map so you can see how
