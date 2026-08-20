@@ -111,7 +111,7 @@ sequenceDiagram
 
     API->>Svc: search(store, liked_names, top_k, model, sex, popularity, sort)
     Svc->>Store: vector_for(name) for each liked name
-    Note over Svc,Store: precomputed corpus vectors are checked FIRST --<br/>the live embedder only runs for names outside<br/>the ~20K corpus (rare, since autocomplete steers<br/>users to known names). This is what keeps the<br/>cultural_similarity model's memory footprint low<br/>in the common case -- see README's RAM section.
+    Note over Svc,Store: precomputed corpus vectors are checked FIRST --<br/>the live embedder only runs for names outside<br/>the ~20K corpus (rare, since autocomplete steers<br/>users to known names), and only if the selected<br/>model allows it (written_similarity: yes, cheap;<br/>cultural_similarity: no -- rejected with a 422<br/>instead, see "Memory footprint" below).
     Store-->>Svc: vectors for the liked names
     Svc->>Svc: centroid = mean(vectors)
     Svc->>Store: cosine_similarity(centroid, corpus_vectors)
@@ -221,12 +221,20 @@ corpus-vector lookups happen first (see the sequence diagram above):
 |---|---|
 | Idle, right after startup (both models' precomputed vectors loaded, ONNX session not yet touched) | **~250 MB** |
 | After searching with names already in the corpus (the common case, since autocomplete guides input) | **~260 MB** |
-| After the *first* search with a name genuinely outside the corpus under `cultural_similarity` (triggers the one-time lazy load) | **~700 MB**, for the remaining lifetime of that process |
+| A name genuinely outside the corpus, searched under `cultural_similarity` | **rejected outright (HTTP 422)** — see below, not attempted |
 
-The typical case comfortably fits a ~512MB free tier; the worst case (a truly novel name
-under `cultural_similarity`) does not. This is a known, accepted trade-off — see `PLAN.md`'s
-"RAM verification" section for the full measurement methodology and fallback options if it
-becomes a real problem in practice.
+**A name outside the corpus under `cultural_similarity` is rejected, not served at a memory
+cost.** This used to be "accepted" as a trade-off on paper; it was tested against a real
+Render free-tier deploy and the process was OOM-killed (memory jumped to ~700MB against the
+tier's 512MB cap, matching the number this table used to show for that row). `ModelSpec.
+allows_oov_encode = False` for `cultural_similarity` (see `embedding/registry.py`) now makes
+`search_service.search()` reject such a request before ever calling the live embedder,
+returning a structured 422 (`{"detail": {"error": "unsupported_oov_name", ...}}`) that the
+frontend turns into a specific Hebrew message suggesting an autocomplete-listed name or the
+other model — see `hooks/useNameSearch.ts`. `written_similarity` has no such restriction
+(`allows_oov_encode` defaults to `True`); its live encode is cheap, no lazy heavyweight
+session involved. See `PLAN.md`'s "RAM verification" section for the original measurement
+methodology, and its later phases for this fix.
 
 ## Project layout
 

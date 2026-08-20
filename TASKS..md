@@ -15,4 +15,4 @@
 [X]13. add some model explanation in hebrew in the front end for users.
 [X]14. add a link to the names github repo.
 15. deploy
-
+[X]16. handle new names not in the data base

@@ -33,9 +33,29 @@ _POPULARITY_THRESHOLDS: dict[PopularityFilter, float] = {
 }
 
 
-def _encode_liked_names(model: ModelStore, liked_names: list[str]) -> np.ndarray:
+class UnsupportedOovNameError(Exception):
+    """Raised when a liked name is outside the model's precomputed corpus
+    and that model's `ModelSpec.allows_oov_encode` is False -- currently
+    just `cultural_similarity`, whose live encode() path lazily loads an
+    ONNX session + tokenizer (~450MB extra RSS, see the root README's
+    "Memory footprint" section) that OOM-killed a real Render free-tier
+    deploy the one time this was tested against a genuinely novel name.
+    Routes should catch this and return a 422 with a clear, actionable
+    message instead of letting the request trigger that load.
+    """
+
+    def __init__(self, names: list[str], model_id: str) -> None:
+        self.names = names
+        self.model_id = model_id
+        super().__init__(f"{model_id!r} does not support out-of-corpus names: {names!r}")
+
+
+def _encode_liked_names(
+    model: ModelStore, model_id: str, liked_names: list[str]
+) -> np.ndarray:
     """Look up precomputed corpus vectors first; only call the (possibly
-    expensive/lazily-loaded) embedder for names outside the corpus.
+    expensive/lazily-loaded) embedder for names outside the corpus -- and
+    only for models that actually allow that (see `UnsupportedOovNameError`).
 
     Autocomplete steers most user input to names already in the corpus, so
     in the common case this never touches the live embedder at all -- which
@@ -45,6 +65,8 @@ def _encode_liked_names(model: ModelStore, liked_names: list[str]) -> np.ndarray
     vectors = [model.vector_for(name) for name in liked_names]
     missing = [name for name, v in zip(liked_names, vectors, strict=True) if v is None]
     if missing:
+        if not model.allows_oov_encode:
+            raise UnsupportedOovNameError(missing, model_id)
         encoded = iter(model.embedder.encode(missing))
         vectors = [v if v is not None else next(encoded) for v in vectors]
     return np.stack(vectors, axis=0)
@@ -99,7 +121,7 @@ def search(
 ) -> SearchResponse:
     model = store.model(model_id)
 
-    liked_vectors = _encode_liked_names(model, liked_names)
+    liked_vectors = _encode_liked_names(model, model_id, liked_names)
     centroid = liked_vectors.mean(axis=0, keepdims=True)  # the "middle point"
 
     similarities = cosine_similarity(centroid, model.vectors)[0]

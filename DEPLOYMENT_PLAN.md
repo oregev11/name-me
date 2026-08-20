@@ -63,9 +63,21 @@ via the recommended option (GitHub Release asset):
    in CI, not just locally.
 5. Verified end to end in an actual container, twice: once via
    `docker_smoke_test.sh` (in-corpus search), once manually forcing the lazy-load path with
-   a genuinely made-up name (`קסניופולוס`) under `cultural_similarity` — confirmed real
-   suggestions come back and idle→post-load memory moves ~231MB → ~637MB, matching
-   `PLAN.md`'s previously-measured worst case.
+   a genuinely made-up name (`קסניופולוס`) under `cultural_similarity` — at the time,
+   confirmed real suggestions come back and idle→post-load memory moves ~231MB → ~637MB,
+   matching `PLAN.md`'s previously-measured worst case.
+6. **Then it actually shipped, and the exact scenario from step 5 crashed the real Render
+   deploy** — the live process went unresponsive (502 on every endpoint, including
+   `/api/health`) for ~35s until Render auto-restarted it, when that same OOV name was
+   searched under `cultural_similarity` against the deployed instance (512MB cap, not the
+   15GB dev machine step 5 was measured on). Confirmed this was a known-but-previously-only
+   theoretical risk actually materializing, not a new bug.
+7. **Fixed properly**: `cultural_similarity` now rejects out-of-corpus names outright
+   (`ModelSpec.allows_oov_encode = False`, a clean 422 instead of the crash-prone live
+   encode) — see the root README's "Memory footprint" section for the full mechanism. Step
+   5's "confirmed real suggestions come back" is no longer today's behavior for that
+   scenario by design; `written_similarity` is unaffected (its OOV path is cheap and stays
+   allowed).
 
 ## Step-by-step
 
@@ -142,12 +154,14 @@ per README's "Known trade-offs").
   (existing behavior, not new). Not fixable on the free tier short of paying for an
   always-on instance.
 - **Memory**: idle fits comfortably (see pre-flight numbers above). The one scenario that
-  doesn't — a genuinely novel name searched under `cultural_similarity`, ~700MB, for that
-  process's remaining lifetime (see `PLAN.md`'s "RAM verification") — could OOM-kill a
-  Render free instance (512MB limit). This is a **pre-existing, already-documented**
-  trade-off, not something this deployment introduces; the fallback order if it becomes a
-  real problem is already recorded in `PLAN.md` (paid tier / prune the tokenizer vocab /
-  autocomplete-only for that model / split into its own service).
+  didn't — a genuinely novel name searched under `cultural_similarity`, ~700MB, for that
+  process's remaining lifetime (see `PLAN.md`'s "RAM verification") — actually OOM-killed
+  the real Render free-tier deploy the first time this was tested against a live URL (not
+  just a theoretical risk anymore). **Fixed, not just documented**: `cultural_similarity`
+  now rejects out-of-corpus names outright with a 422 instead of attempting the expensive
+  live encode (`ModelSpec.allows_oov_encode = False` in `embedding/registry.py`) — see the
+  root README's "Memory footprint" section for the mechanism and the frontend-facing error
+  message.
 - **Rollback**: both platforms keep prior deploys. Render → Deploys tab → redeploy an older
   one. Vercel → Deployments tab → "Promote to Production" on an older one. Both also
   auto-deploy on every push to `main` by default — disable `autoDeploy` in `render.yaml` (or

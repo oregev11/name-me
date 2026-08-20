@@ -1186,3 +1186,73 @@ hasn't asked for, out of scope for this deployment-focused phase — but worth s
 - `.github/workflows/backend-ci.yml`
 - `DEPLOYMENT_PLAN.md`
 - `README.md`, `backend/README.md`
+
+---
+
+# Phase 12: Real production OOM crash, and the fix
+
+**Status: DONE.**
+
+## Context
+
+Backend deployed to Render (Step 1 of `DEPLOYMENT_PLAN.md`, done live with the user).
+`scripts/verify_deployment.sh` passed cleanly. Then, testing the exact scenario Phase 11
+had only verified locally (a genuinely novel name under `cultural_similarity`) against the
+*real* deployed URL: the backend went unresponsive (502 on every endpoint, including
+`/api/health`) for ~35 seconds until Render auto-restarted it. This is the OOM risk
+`PLAN.md`'s "RAM verification" section had documented as a *possible* worst case since
+Phase 2 — now confirmed as a *real* one, on a real 512MB-capped instance, not just measured
+on a 15GB dev machine.
+
+## What was built
+
+User picked the recommended fix (of three offered: restrict-to-corpus / accept-and-move-on
+/ pay for more RAM): `cultural_similarity` now rejects out-of-corpus liked names outright
+instead of attempting the crash-prone live encode.
+
+- `embedding/registry.py`: new `ModelSpec.allows_oov_encode: bool = True` field --
+  `cultural_similarity` sets it `False`; `written_similarity` keeps the default (its OOV
+  encode is cheap, no lazy heavyweight session involved).
+- `corpus/loader.py`: `ModelStore` carries the same flag (copied from `ModelSpec` at load
+  time) so `search_service` can check it without needing the registry in scope.
+- `services/search_service.py`: new `UnsupportedOovNameError(names, model_id)`; `_encode_
+  liked_names` raises it instead of calling `model.embedder.encode()` when a name is
+  missing from the corpus and the model disallows OOV encode.
+- `api/routes_search.py`: catches it, returns a structured 422 (`{"detail": {"error":
+  "unsupported_oov_name", "model", "names", "message"}}`) -- a matchable tag, not just a
+  string, so the frontend doesn't have to parse English prose.
+- Frontend: `api/client.ts`'s `ApiError` gained an optional `.detail` (parsed from the JSON
+  body when present); `useNameSearch.ts` maps `detail.error === "unsupported_oov_name"` to
+  a specific Hebrew message (naming the offending name + suggesting autocomplete or
+  switching models) instead of its generic "server might be waking up" fallback.
+  `MODEL_LABELS` (the Hebrew display-name map) was hoisted from `ModelToggle.tsx` into
+  `types/api.ts` so both the toggle and the new error-message code share one source (also
+  fixed an oxlint `only-export-components` warning that caused, since a component file
+  should only export the component).
+
+## Verification
+
+- ✅ Backend: `uv run pytest` -- 51 passed, 1 xpassed (3 new: OOV-allowed-under-
+  written_similarity, OOV-rejected-under-cultural_similarity at the `_encode_liked_names`
+  unit level, and an `/api/search` integration test for the same). `ruff check .` clean
+  (same pre-existing unrelated notebook note).
+- ✅ Frontend: `npm run test` (24 passed, 2 new: the specific-message case and the
+  generic-fallback-still-works case), `tsc -b` clean, `oxlint` clean (0 warnings, was 1).
+- ✅ Real container test (not just unit tests): built a fresh image, confirmed the exact
+  previously-crashing request now returns a clean 422 with the structured detail, confirmed
+  `/api/health` reports 200 immediately after (no crash/restart), and confirmed
+  `written_similarity` still handles the same OOV name normally (200, real suggestions).
+- Pushed to `main`; Render auto-redeploys (`autoDeploy: true`) -- re-verify against the live
+  URL as part of closing out `TASKS..md` #15.
+
+### Critical files
+
+- `backend/src/nameme/embedding/registry.py`
+- `backend/src/nameme/corpus/loader.py`
+- `backend/src/nameme/services/search_service.py`
+- `backend/src/nameme/api/routes_search.py`
+- `backend/tests/test_search_service.py`, `backend/tests/test_search.py`
+- `frontend/src/api/client.ts`
+- `frontend/src/hooks/useNameSearch.ts`
+- `frontend/src/types/api.ts`, `frontend/src/components/ModelToggle.tsx`
+- `frontend/tests/useNameSearch.test.tsx` (new)

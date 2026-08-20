@@ -25,6 +25,10 @@ class ModelStore:
     vectors: np.ndarray  # shape (len(unique_names), embedder.dim)
     embedder: NameEmbedder
     pca: PCA
+    # Mirrors ModelSpec.allows_oov_encode (see embedding/registry.py) --
+    # carried onto ModelStore so search_service can check it without
+    # needing the registry/spec in scope.
+    allows_oov_encode: bool = True
     _name_to_row: dict[str, int] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -220,7 +224,11 @@ def load_corpus_store(artifacts_dir: Path) -> CorpusStore:
         pca: PCA = joblib.load(model_dir / "pca_projector.joblib")
 
         models[spec.id] = ModelStore(
-            unique_names=unique_names, vectors=vectors, embedder=embedder, pca=pca
+            unique_names=unique_names,
+            vectors=vectors,
+            embedder=embedder,
+            pca=pca,
+            allows_oov_encode=spec.allows_oov_encode,
         )
 
     return CorpusStore(names_df=names_df, years_df=years_df, models=models)

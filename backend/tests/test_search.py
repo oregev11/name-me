@@ -76,6 +76,39 @@ def test_search_rejects_unknown_model(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_search_rejects_out_of_corpus_name_under_cultural_similarity(
+    client: TestClient,
+) -> None:
+    # cultural_similarity's live encode() path is deliberately disabled for
+    # names outside the corpus -- a real Render free-tier deploy OOM-killed
+    # itself on exactly this (lazy ONNX+tokenizer load), see
+    # DEPLOYMENT_PLAN.md. Must be a clear 422 with a structured, matchable
+    # detail (the frontend keys off `detail.error`), not a 500/crash.
+    made_up_name = "קסניופולוס"
+    resp = client.post(
+        "/api/search",
+        json={"liked_names": [made_up_name], "model": "cultural_similarity"},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["error"] == "unsupported_oov_name"
+    assert detail["model"] == "cultural_similarity"
+    assert detail["names"] == [made_up_name]
+
+
+def test_search_allows_out_of_corpus_name_under_written_similarity(
+    client: TestClient,
+) -> None:
+    # written_similarity's live encode() is cheap -- no such restriction.
+    made_up_name = "קסניופולוס"
+    resp = client.post(
+        "/api/search",
+        json={"liked_names": [made_up_name], "model": "written_similarity", "top_k": 3},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()["suggestions"]) == 3
+
+
 def test_search_default_top_k_is_20(client: TestClient) -> None:
     resp = client.post("/api/search", json={"liked_names": ["דוד"]})
     assert resp.status_code == 200

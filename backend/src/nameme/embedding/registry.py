@@ -34,6 +34,18 @@ class ModelSpec:
     #   of its own to persist per corpus build.
     persisted_embedder: bool
     new_embedder: Callable[[Path], NameEmbedder]
+    # False for models whose live encode() path is too expensive/risky to
+    # run per-request on a free-tier host -- e.g. cultural_similarity's
+    # first live encode lazily loads an ONNX session + tokenizer that costs
+    # ~450MB RSS on top of the idle baseline (see root README's "Memory
+    # footprint" section), which OOM-killed a real Render free-tier deploy
+    # the one time this was tested against a genuinely out-of-corpus name.
+    # When False, search_service.search() rejects liked names outside the
+    # precomputed corpus for that model instead of calling encode() on them
+    # -- see UnsupportedOovNameError. Defaults to True (safe/cheap to call
+    # live) so a new model doesn't need to think about this unless its
+    # encode() is unusually expensive.
+    allows_oov_encode: bool = True
 
 
 MODEL_REGISTRY: dict[str, ModelSpec] = {
@@ -52,5 +64,6 @@ MODEL_REGISTRY: dict[str, ModelSpec] = {
         dim=384,
         persisted_embedder=False,
         new_embedder=lambda model_dir: OnnxSentenceEmbedder(model_dir),
+        allows_oov_encode=False,
     ),
 }

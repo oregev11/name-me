@@ -1,3 +1,4 @@
+import { MODEL_LABELS } from "../types/api";
 import type { ModelId } from "../types/api";
 
 interface Props {
@@ -6,10 +7,9 @@ interface Props {
   disabled: boolean;
 }
 
-const OPTIONS: { id: ModelId; label: string }[] = [
-  { id: "written_similarity", label: "דמיון כתיב" },
-  { id: "cultural_similarity", label: "דמיון תרבותי ומשמעות" },
-];
+const OPTIONS: { id: ModelId; label: string }[] = (
+  Object.keys(MODEL_LABELS) as ModelId[]
+).map((id) => ({ id, label: MODEL_LABELS[id] }));
 
 // Plain-language explanation of what each model actually does, shown below
 // the toggle so a non-technical user understands the difference before

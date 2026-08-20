@@ -1,6 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, getHealth, searchNames } from "../api/client";
+import { MODEL_LABELS } from "../types/api";
 import type { ModelId, SearchFilters, SearchResponse } from "../types/api";
+
+// Hebrew, user-facing translations for the backend's structured error
+// `detail.error` tags (see api/client.ts's ApiErrorDetail) -- keyed
+// separately from the backend's English/dev-facing `detail.message` so the
+// two can evolve independently (the backend message is for logs/debugging,
+// this one is what a user actually reads).
+function messageForErrorDetail(detail: {
+  error: string;
+  model?: unknown;
+  names?: unknown;
+}): string | null {
+  if (detail.error === "unsupported_oov_name") {
+    const modelLabel =
+      typeof detail.model === "string" && detail.model in MODEL_LABELS
+        ? MODEL_LABELS[detail.model as ModelId]
+        : "השיטה הנבחרת";
+    const names = Array.isArray(detail.names) ? detail.names.join(", ") : "";
+    return `השם "${names}" לא מוכר במאגר של שיטת "${modelLabel}". נסו לבחור שם מרשימת ההשלמה האוטומטית, או עברו לשיטת "דמיון כתיב".`;
+  }
+  return null;
+}
 
 const DEFAULT_FILTERS: SearchFilters = {
   sex: "any",
@@ -51,10 +73,15 @@ export function useNameSearch() {
         const response = await searchNames(names, searchModel, searchFilters);
         setResult(response);
       } catch (err) {
+        const specific =
+          err instanceof ApiError && err.detail
+            ? messageForErrorDetail(err.detail)
+            : null;
         const message =
-          err instanceof ApiError
+          specific ??
+          (err instanceof ApiError
             ? "לא הצלחנו להביא תוצאות. אולי שרת המודל בהתעוררות (יכול לקחת עד דקה)."
-            : "שגיאה לא צפויה, נסו שוב.";
+            : "שגיאה לא צפויה, נסו שוב.");
         setError(message);
       } finally {
         setLoading(false);

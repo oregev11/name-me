@@ -1,6 +1,18 @@
 // Mirrors backend/src/nameme/schemas/search.py
 
 export type ModelId = "written_similarity" | "cultural_similarity";
+
+// Single source of truth for each model's Hebrew display name -- shared by
+// ModelToggle (the toggle buttons) and useNameSearch (error messages that
+// need to name a model in user-facing text), so both stay in sync instead
+// of duplicating/drifting from each other. Lives here rather than in
+// ModelToggle.tsx so that component file only exports the component
+// itself (React Fast Refresh works reliably only when a file's exports are
+// either all components or all non-components).
+export const MODEL_LABELS: Record<ModelId, string> = {
+  written_similarity: "דמיון כתיב",
+  cultural_similarity: "דמיון תרבותי ומשמעות",
+};
 export type SexFilter = "any" | "M" | "F";
 export type SectorFilter =
   "any" | "Jewish" | "Muslim" | "Christian-Arab" | "Druze";
