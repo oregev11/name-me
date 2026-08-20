@@ -1,10 +1,10 @@
 # Deployment plan
 
-`TASKS..md` #12. This is the concrete, step-by-step plan for taking name-me from "runs
-locally" to "has a public URL" — chosen platforms, what's already verified, one real blocker
-that needs a decision, and the exact steps + scripts to execute and confirm each stage.
-Nothing here has been executed yet (no Render/Vercel account access from this environment) —
-this document is what a human runs, in order, using their own accounts.
+`TASKS..md` #12/#15. This is the concrete, step-by-step plan for taking name-me from "runs
+locally" to "has a public URL" — chosen platforms, what's already verified, and the exact
+steps + scripts to execute and confirm each stage. Render/Vercel account setup (Steps 1-4)
+needs a human clicking through each dashboard's OAuth — this document is what to run, in
+order, at that point.
 
 ## Chosen platforms (already decided, see README's "Deployment" section)
 
@@ -37,46 +37,39 @@ It's available now, so this plan verified it directly rather than leaving it as 
 - This is now a repeatable script, not a one-off check — see `backend/scripts/docker_smoke_test.sh`
   below. Re-run it any time before deploying, e.g. after dependency bumps.
 
-## ⚠️ Real blocker: the `cultural_similarity` ONNX model isn't in git
+## ✅ Resolved: the `cultural_similarity` ONNX model + a repo-visibility fix
 
 `backend/src/nameme/artifacts/cultural_similarity/model_quantized.onnx` (~112MB) was
-deliberately excluded from git in a prior commit ("Exclude oversized ONNX model from git,
-over GitHub's limit") — GitHub hard-caps individual file blobs at 100MB. **It does not exist
-in this git history at all**, on disk locally, or anywhere deployable currently pulls from.
+excluded from git in a prior commit — GitHub hard-caps individual git blobs at 100MB. Fixed
+via the recommended option (GitHub Release asset):
 
-What this actually breaks: `cultural_similarity`'s precomputed corpus vectors
-(`corpus_vectors.npz`, 28MB, **is** committed) still work fine, so **any search using a name
-already in the corpus works normally** — which, per README, is the common case since
-autocomplete steers users to known names. Only the lazy live-encode path (a name typed that's
-genuinely outside the ~20K corpus, searched under `cultural_similarity`) needs the missing
-`.onnx` file, and would 500 without it. `written_similarity` is entirely unaffected (it
-doesn't use ONNX at all).
-
-This needs to be resolved **before** step 1 below, or `cultural_similarity` ships with a
-known gap. Three options, cheapest/simplest first:
-
-1. **GitHub Release asset** (recommended): upload `model_quantized.onnx` as a binary asset
-   on a GitHub Release (Releases support files up to 2GB, unlike git blobs) — free, no new
-   account, no new infra. Add a `RUN curl -L <release-asset-url> -o
-   .../model_quantized.onnx` step to `backend/Dockerfile` (after the `COPY src ./src` step)
-   so the image always has it, without ever putting it back in git.
-2. **Git LFS**: puts the file back "in" git via a pointer, but adds a new dependency
-   (`git-lfs` on every clone/CI machine) and GitHub LFS free bandwidth is capped (1GB/month)
-   — probably fine at this project's scale, but more moving parts than option 1 for no clear
-   benefit.
-3. **Re-export at build time**: run `scripts/export_semantic_model.py` inside the Docker
-   build instead of shipping the file. Rejected — it needs the `export` dependency group
-   (torch + transformers + optimum), which was deliberately kept **out** of the runtime image
-   for size/memory reasons (see README's "Memory footprint" section); pulling it back in for
-   a build-time-only step would still bloat the build stage and slow every deploy.
-
-**Decision needed from you**: confirm option 1 (GitHub Release asset), or say if you'd
-rather do 2/3/something else. Nothing below depends on which you pick except the one
-Dockerfile edit — the rest of the plan is unaffected.
+1. Regenerated the file locally (`uv sync --group export && uv run --group export python
+   scripts/export_semantic_model.py`) — the previous export was never committed to begin
+   with, only referenced. Its sanity-check numbers matched `PLAN.md`'s previously-recorded
+   values exactly (same base model, deterministic export).
+2. Uploaded it as a Release asset:
+   [`cultural-similarity-onnx-v1`](https://github.com/oregev11/name-me/releases/tag/cultural-similarity-onnx-v1),
+   sha256 `ab9754c56dc012929bebb839bbe79e276fbb8306ed212ffd00bf816914bb8b03`.
+3. **Discovered along the way: this repo was private.** GitHub returns a plain 404 (not 403)
+   for a private repo's Release assets when fetched unauthenticated — which is exactly what
+   an anonymous Docker build does. This wasn't just an asset-hosting problem: the footer's
+   "קוד המקור ב-GitHub" link (`TASKS..md` #10) would 404 for any real visitor too, defeating
+   the point of a portfolio app linking to its own source. **Made the repo public** — fixes
+   both at once, no auth/secrets needed for either the Docker build or CI.
+4. `backend/Dockerfile` now fetches + checksum-verifies it via BuildKit's `ADD --checksum`
+   (no `curl` package needed in the image; a corrupted/wrong download fails the build
+   loudly). `backend-ci.yml` fetches it too, before `pytest` — the 5 tests that need it
+   (`tests/embedding/test_onnx_sentence.py`, one case in `test_search_service.py`) now pass
+   in CI, not just locally.
+5. Verified end to end in an actual container, twice: once via
+   `docker_smoke_test.sh` (in-corpus search), once manually forcing the lazy-load path with
+   a genuinely made-up name (`קסניופולוס`) under `cultural_similarity` — confirmed real
+   suggestions come back and idle→post-load memory moves ~231MB → ~637MB, matching
+   `PLAN.md`'s previously-measured worst case.
 
 ## Step-by-step
 
-### Step 0 — resolve the ONNX asset (see above), then re-verify
+### Step 0 — done (see above); re-verify any time with
 
 ```bash
 ./backend/scripts/docker_smoke_test.sh
@@ -172,9 +165,10 @@ per README's "Known trade-offs").
 
 ## Open items (not blocking, but worth tracking)
 
-- The ONNX asset-hosting decision above.
 - A custom domain, if wanted later — both platforms support it on free tiers; out of scope
   for a first deploy.
-- CI (GitHub Actions) running `pytest`/`vitest` on every push before Render/Vercel
-  auto-deploy from `main` — not set up yet; currently deploys would go out untested beyond
-  whatever was run locally before pushing.
+- CI (`.github/workflows/{backend,frontend}-ci.yml`) already runs `pytest`/`vitest` on every
+  push — see the root README's [CI/CD](./README.md#cicd) section — but isn't *sequenced*
+  with Render/Vercel's auto-deploy: both react to the same push independently, so a red test
+  run doesn't currently block a deploy. That section lays out two fixes (branch protection,
+  recommended; Actions-driven deploy); neither is implemented.

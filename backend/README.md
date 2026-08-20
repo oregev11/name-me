@@ -84,35 +84,32 @@ its cwd, so commands read exactly like running them by hand from this directory:
    `export` group (torch/transformers/optimum, ~2GB+) and `notebook` group are never pulled
    in here, keeping CI fast and matching what actually ships (see `pyproject.toml`'s
    `[dependency-groups]` comments for why those two are opt-in).
-4. **`uv run ruff check .`** — lint. Note there's **no static type-check step** for the
+4. **Fetch `cultural_similarity`'s ONNX model** — `model_quantized.onnx` (~112MB) is over
+   GitHub's 100MB git blob limit, so it's hosted as a
+   [GitHub Release asset](https://github.com/oregev11/name-me/releases/tag/cultural-similarity-onnx-v1)
+   instead of committed (see the root README's
+   [Memory footprint](../README.md#memory-footprint-why-this-matters-for-free-tier-hosting)
+   section and `DEPLOYMENT_PLAN.md`). This step `curl`s it down and pipes the result through
+   `sha256sum -c` — the exact same file + checksum `backend/Dockerfile` fetches via `ADD
+   --checksum` for the deployed image, so CI and production always agree on which model is
+   actually running. Without this step, 5 tests (`tests/embedding/test_onnx_sentence.py` x4,
+   one case in `tests/test_search_service.py`) that call the live ONNX encode path directly
+   fail with `onnxruntime.capi.onnxruntime_pybind11_state.NoSuchFile` — every other test
+   passes regardless, since the precomputed `corpus_vectors.npz` for `cultural_similarity`
+   *is* committed and covers the common (in-corpus) case.
+5. **`uv run ruff check .`** — lint. Note there's **no static type-check step** for the
    backend (Python has no `tsc` equivalent wired up here — no `mypy`/`pyright` in CI). This
    is an honest gap, not an oversight to hide: Pydantic models give runtime validation at the
    API boundary (`schemas/search.py`), which covers the highest-value case (malformed
    requests), but internal type mistakes elsewhere aren't statically caught the way the
    frontend's `tsc -b` step catches them.
-5. **`uv run pytest`** — the real correctness gate: `tests/` (unit tests for
+6. **`uv run pytest`** — the real correctness gate: `tests/` (unit tests for
    `corpus/loader.py`, `services/search_service.py`, the embedders) plus `tests/test_*.py`
    FastAPI `TestClient` integration tests that exercise `/api/search`, `/api/autocomplete`,
    `/api/health` end to end against the real committed artifacts (no mocked corpus) — these
    are the same tests, same artifacts, the `docker_smoke_test.sh` container-level check and
    local `uv run pytest` both exercise, just at three different layers (unit → in-process
    HTTP → real container).
-
-### Known gap: 5 tests currently fail in CI, not just locally
-
-`cultural_similarity/model_quantized.onnx` (~112MB) is excluded from git — see the root
-README's [Memory footprint](../README.md#memory-footprint-why-this-matters-for-free-tier-hosting)
-section and `DEPLOYMENT_PLAN.md` — which means the GitHub Actions runner's checkout is
-missing it too, identically to a fresh local `git clone`. `tests/embedding/test_onnx_sentence.py`
-(4 tests) and one case in `tests/test_search_service.py`
-(`test_out_of_corpus_names_fall_back_to_the_live_embedder`) call the live ONNX encode path
-directly and fail with `onnxruntime.capi.onnxruntime_pybind11_state.NoSuchFile`. Every other
-test passes regardless (the precomputed `corpus_vectors.npz` for `cultural_similarity` *is*
-committed, so in-corpus lookups — the common case — never touch the missing file). Until the
-ONNX-hosting decision in `DEPLOYMENT_PLAN.md` is made and a download step is added to this
-workflow (mirroring whatever the Dockerfile ends up doing), treat `backend-ci` as "passes
-except those 5, which fail for a known, unrelated-to-your-change reason" rather than a clean
-gate.
 
 ### CD: this workflow does not deploy anything
 

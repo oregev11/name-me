@@ -28,6 +28,17 @@ jobs:
         run: uv python install
       - name: Install dependencies
         run: uv sync --all-extras
+      - name: Fetch cultural_similarity's ONNX model
+        # ~112MB, over GitHub's 100MB git blob limit -- hosted as a Release
+        # asset instead of committed (see DEPLOYMENT_PLAN.md and the root
+        # README's CI/CD section). Without this, 5 tests that exercise the
+        # live ONNX encode path fail with a missing-file error -- see
+        # tests/embedding/test_onnx_sentence.py and
+        # tests/test_search_service.py::test_out_of_corpus_names_fall_back_to_the_live_embedder.
+        run: |
+          curl -sSL -o src/nameme/artifacts/cultural_similarity/model_quantized.onnx \
+            https://github.com/oregev11/name-me/releases/download/cultural-similarity-onnx-v1/model_quantized.onnx
+          echo "ab9754c56dc012929bebb839bbe79e276fbb8306ed212ffd00bf816914bb8b03  src/nameme/artifacts/cultural_similarity/model_quantized.onnx" | sha256sum -c -
       - name: Lint
         run: uv run ruff check .
       - name: Test

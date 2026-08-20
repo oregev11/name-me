@@ -12,7 +12,7 @@
 [X]11. add link to the names repo.
 [X]12. create a pland for deployment
 # before deployment 
-13. add some model explanation in hebrew in the front end for users.
-14. add a link to the names github repo.
+[X]13. add some model explanation in hebrew in the front end for users.
+[X]14. add a link to the names github repo.
 15. deploy
 

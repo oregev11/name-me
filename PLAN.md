@@ -1091,3 +1091,98 @@ doc) and was left alone.
 - `backend/README.md`
 - `frontend/README.md`
 - `backend/notebooks/README.md`
+
+---
+
+# Phase 11: Hebrew model explanations + resolving the ONNX blocker for real deployment
+
+**Status: DONE** (model explanations, ONNX blocker, repo-visibility fix). **Render/Vercel
+deploy itself: IN PROGRESS**, guided live with the user per their explicit choice (they run
+the account/OAuth steps themselves via `!`-prefixed commands in-session; verified after each
+step) — see `DEPLOYMENT_PLAN.md` Steps 1-4.
+
+## Context
+
+`TASKS..md` #13-15: a plain-language Hebrew explanation of the two similarity models for
+end users (`ModelToggle` previously only showed the two button labels + a one-line hint
+about rebuilding the map — no explanation of what either mode actually *does*); #14 ("add a
+link to the names github repo") turned out to already be satisfied by Phase 8's Footer
+addition (the `babynamesIL` link) — marked done, no code change needed; #15 ("deploy") is
+the real thing this time, not just the plan from Phase 8.
+
+Executing #15 immediately hit the real blocker Phase 8 had only documented (not fixed): the
+`cultural_similarity` ONNX model isn't in git. Resolving it surfaced a second, more
+consequential problem.
+
+## What was built
+
+- **Hebrew model explanations** (`ModelToggle.tsx`): a `MODEL_EXPLANATIONS` dict keyed by
+  `ModelId`, rendered below the toggle buttons and switching live with the selected model —
+  plain-language versions of the root README's "The two similarity models" section,
+  including an honest "ניסיונית" (experimental) framing for `cultural_similarity`.
+  `frontend/tests/ModelToggle.test.tsx` gained a test asserting the explanation text
+  actually switches (not just that both strings exist somewhere in the DOM).
+- **ONNX blocker, actually resolved**: regenerated the missing `model_quantized.onnx`
+  locally (`export_semantic_model.py` — same base model, sanity-check numbers matched
+  `PLAN.md`'s previously-recorded values exactly, confirming a deterministic export).
+  Uploaded it as a GitHub Release asset
+  ([`cultural-similarity-onnx-v1`](https://github.com/oregev11/name-me/releases/tag/cultural-similarity-onnx-v1)).
+  `backend/Dockerfile` now fetches + checksum-verifies it via BuildKit's `ADD --checksum`
+  (no `curl` binary needed in the image); `backend-ci.yml` fetches + verifies it too, before
+  `pytest`. Verified with the local file *removed entirely* that the Docker build still
+  produces a working image (proving the fetch, not local disk state, is what makes it work),
+  and verified the actual previously-broken code path — a genuinely novel name searched
+  under `cultural_similarity` inside a real container — now returns real suggestions
+  (idle→post-lazy-load memory: ~231MB → ~637MB, matching the previously-documented ~700MB
+  worst case).
+- **Repo visibility, a real (not cosmetic) fix**: while wiring the Release-asset download,
+  anonymous fetches 404'd — turned out this GitHub repo was **private**. That's not just an
+  ONNX-hosting inconvenience: the footer's GitHub link (`TASKS..md` #10) would 404 for any
+  real visitor to the deployed portfolio site too. Flagged to the user, who confirmed making
+  it public (also the simpler fix for the asset download vs. a PAT-based authenticated
+  build). `gh repo edit --visibility public --accept-visibility-change-consequences`.
+- **A `gh` CLI auth wrinkle worth recording**: the environment's `GH_TOKEN` env var is
+  invalid/stale and, being set, silences `gh`'s normal stored-credential login entirely
+  (`gh auth login` refuses to proceed while any `GH_TOKEN` is set, valid or not) — the user
+  had to run `unset GH_TOKEN && gh auth login` themselves (device-code browser flow) for
+  `gh` to actually authenticate; subsequent `gh`/`curl` calls in this session needed
+  `unset GH_TOKEN` prefixed too, since Bash tool calls don't share shell state with the
+  user's own `!`-prefixed commands.
+- Updated `DEPLOYMENT_PLAN.md` (blocker section rewritten from "decision needed" to
+  "resolved", Step 0 marked done, stale "CI not set up" line in Open Items corrected) and
+  both READMEs' CI/CD sections (mermaid diagram gained the ONNX-fetch step; the "known gap"
+  prose became a "resolved" note) to match reality.
+
+## An interesting side-observation, not acted on
+
+`tests/embedding/test_onnx_sentence.py::test_culturally_linked_pairs_more_similar_than_unrelated_control`
+is marked `xfail(strict=False)` with reasoning that the whole `cultural_similarity` premise
+is an unproven hypothesis. With the ONNX file now actually present, this test's real logic
+runs for (arguably) the first time in CI/local-test form — and it **passes** (4/4
+culturally-linked pairs beat their control, `pytest` reports `1 xpassed`). Since `xfail` is
+non-strict, this doesn't fail the build either way. Left the marker as-is rather than
+declaring the hypothesis validated off one run — that's a modeling-methodology call the user
+hasn't asked for, out of scope for this deployment-focused phase — but worth surfacing.
+
+## Verification
+
+- ✅ Backend: `uv run pytest` — 48 passed, 1 xpassed (see above), `ruff check .` clean (same
+  pre-existing, unrelated notebook line-length note as every prior phase).
+- ✅ Frontend: `npm run test` (22 passed, 1 new), `tsc -b` clean, `oxlint` clean.
+- ✅ `docker build` succeeds with the local ONNX file **removed from disk entirely**,
+  proving the `ADD --checksum` fetch (not local state) is what makes the image work; the
+  resulting container correctly serves both the common (in-corpus) path and the
+  previously-broken OOV live-encode path under `cultural_similarity`.
+- ✅ Uploaded Release asset's sha256 (`ab9754c5...`) verified three ways: GitHub's own
+  recorded asset digest, `gh release download` (authenticated), and a plain anonymous
+  `curl` (post-visibility-fix) — all three match.
+
+### Critical files
+
+- `frontend/src/components/ModelToggle.tsx`
+- `frontend/tests/ModelToggle.test.tsx`
+- `frontend/src/styles/global.css`
+- `backend/Dockerfile`
+- `.github/workflows/backend-ci.yml`
+- `DEPLOYMENT_PLAN.md`
+- `README.md`, `backend/README.md`

@@ -264,7 +264,8 @@ flowchart TD
     Push -->|"paths: frontend/**"| FCI["frontend-ci.yml<br/>(GitHub Actions)"]
 
     BCI --> B1["uv sync --all-extras<br/>(dev group only -- no torch/transformers)"]
-    B1 --> B2["ruff check ."]
+    B1 --> B1b["fetch + checksum ONNX model<br/>(GitHub Release asset)"]
+    B1b --> B2["ruff check ."]
     B2 --> B3["pytest"]
 
     FCI --> F1["npm ci"]
@@ -286,21 +287,22 @@ and vice versa) — both trigger on every push to `main` and every pull request:
 - **`backend-ci.yml`**: `uv sync --all-extras` (installs the default + `dev` dependency
   group only — `--all-extras` refers to `[project.optional-dependencies]`, which this
   project doesn't use; the heavy `export`/`notebook` groups live under `[dependency-groups]`
-  and are never pulled in here), then `ruff check .`, then `pytest`.
+  and are never pulled in here), then fetches `cultural_similarity`'s ONNX model from its
+  GitHub Release (see below), then `ruff check .`, then `pytest`.
 - **`frontend-ci.yml`**: `npm ci`, then lint (`oxlint`), typecheck (`tsc -b`), unit tests
   (`vitest`), and a production build — the same four checks this README's
   [Testing](#testing) section runs locally, in the same order, so "CI is green" and "I ran
   the local one-liner" mean the same thing.
 
-**Known gap in CI itself, not just CD**: `cultural_similarity/model_quantized.onnx` (~112MB)
-is excluded from git (see [Deployment](#deployment)/`DEPLOYMENT_PLAN.md`) — GitHub Actions
-checks out the same repo, so it's missing there too. 5 backend tests that exercise the live
-ONNX encode path (`tests/embedding/test_onnx_sentence.py`, one case in
-`tests/test_search_service.py`) fail as a result — same failures reproducible locally today,
-not a CI-only issue. This makes `backend-ci` an unreliable merge gate until it's fixed, and
-needs the same fix `DEPLOYMENT_PLAN.md` proposes for the Dockerfile (host the file
-somewhere fetchable, e.g. a GitHub Release asset) applied to the CI workflow too, so the
-runner can download it before running `pytest`.
+**Resolved gap** (was: CI failed 5 tests, not just a deploy-time concern): `cultural_similarity/model_quantized.onnx`
+(~112MB) is over GitHub's 100MB git blob limit, so it isn't committed — it's hosted as a
+[GitHub Release asset](https://github.com/oregev11/name-me/releases/tag/cultural-similarity-onnx-v1)
+instead, and `backend-ci.yml` downloads + checksum-verifies it (`sha256sum -c`) before
+running `pytest`, the same way `backend/Dockerfile` does for the deployed image (see
+[Deployment](#deployment)/`DEPLOYMENT_PLAN.md`). Discovering this also surfaced that the
+repo itself was private — which independently would have 404'd the footer's GitHub link for
+real visitors — so the repo was made public, which also means the Release asset needs no
+auth to fetch from either CI or Render's Docker build.
 
 ### CD: Render + Vercel's own Git integration — no custom pipeline needed
 
@@ -368,12 +370,12 @@ worst case.
 BACKEND_URL=https://<render-url> FRONTEND_URL=https://<vercel-url> ./scripts/verify_deployment.sh
 ```
 
-**Not yet deployed** — the app is deployment-ready (Docker build verified: builds, runs, and
-serves real traffic at ~230MB idle — see `DEPLOYMENT_PLAN.md`) but hasn't been pushed to
-Render/Vercel yet (needs account access). **`DEPLOYMENT_PLAN.md` has the full step-by-step
-plan**, including one real open item (the `cultural_similarity` ONNX model's ~112MB file
-isn't in git — GitHub's blob size limit — and needs a hosting decision before that model's
-live-encode path works in production).
+**Not yet deployed** — the app is deployment-ready: the Docker build is verified end to end
+(builds, runs, serves real traffic at ~230MB idle, and — as of this session — the
+`cultural_similarity` live-encode path works too, ONNX model included via a GitHub Release
+asset, see `DEPLOYMENT_PLAN.md`) but hasn't been pushed to Render/Vercel yet, since that
+needs a human clicking through each platform's account/OAuth setup. **`DEPLOYMENT_PLAN.md`
+has the full step-by-step plan** for that part.
 
 
 ## Future plans

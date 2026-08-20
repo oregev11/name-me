@@ -46,6 +46,27 @@ describe("ModelToggle", () => {
     expect(onChange).toHaveBeenCalledWith("cultural_similarity");
   });
 
+  it("shows a Hebrew explanation of the currently selected model, switching with the value", () => {
+    const { rerender } = render(
+      <ModelToggle
+        value="written_similarity"
+        onChange={vi.fn()}
+        disabled={false}
+      />,
+    );
+    expect(screen.getByText(/איך שהם כתובים/)).toBeInTheDocument();
+
+    rerender(
+      <ModelToggle
+        value="cultural_similarity"
+        onChange={vi.fn()}
+        disabled={false}
+      />,
+    );
+    expect(screen.getByText(/שיטה ניסיונית/)).toBeInTheDocument();
+    expect(screen.queryByText(/איך שהם כתובים/)).not.toBeInTheDocument();
+  });
+
   it("disables both buttons when disabled is true", () => {
     render(
       <ModelToggle
