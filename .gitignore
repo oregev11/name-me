@@ -33,4 +33,8 @@ frontend/.vite/
 .vscode/
 .idea/
 .DS_Store
+
+# Claude Code local session/config state (CLAUDE.md itself IS committed --
+# it's project instructions, not local state)
+.claude/
 backend/src/nameme/artifacts/cultural_similarity/model_quantized.onnx

@@ -146,7 +146,12 @@ Every search takes the liked names' centroid ("middle point") and finds the 20 c
 in "most different" mode, farthest) corpus names to it — configurable via:
 
 - **Model**: `written_similarity` or `cultural_similarity` (see below).
-- **Sex**: all / boys only / girls only.
+- **Sex**: all / boys only / girls only. A name that's mostly given to one sex but also has
+  real usage on the other (e.g. "דניאל" — heavily boys, but ~13K girls too) still shows up
+  under either filter, but its *displayed* sex, popularity, and sectors are recomputed from
+  only the rows matching the active filter — so a girls-only search always shows it as a
+  girl's name with a girl's-only popularity count, never as a "boy" on the chart. See
+  `CorpusStore.sex_sector_filtered_meta`/`year_filtered_meta` in `backend/src/nameme/corpus/loader.py`.
 - **Sector**: all / Jewish / Muslim / Christian-Arab / Druze — the population-group
   breakdown CBS publishes given-name counts by (the "tabs" in the source release; see
   `DATA_SOURCE.md`). Sex and sector combine into one check, not two independent ones — e.g.
@@ -158,20 +163,27 @@ in "most different" mode, farthest) corpus names to it — configurable via:
   corpus names (see `DATA_SOURCE.md` for why) — a name with no yearly data stays fully
   searchable with the full range selected, but drops out once you narrow the range, since
   there's no evidence of which years it was actually given in. Computed once per request
-  (not per candidate) by filtering the year breakdown and re-aggregating.
+  (not per candidate) by filtering the year breakdown and re-aggregating. Dragging a handle
+  updates the label/fill instantly, but the actual search fires debounced (300ms after the
+  last move) — firing a search (and disabling the input while it's in flight) on every
+  single one-year step used to drop the browser's mouse capture mid-drag, making the slider
+  only ever movable one year at a time; see `frontend/src/components/YearRangeSlider.tsx`.
 - **Popularity**: all names / top 10% most popular / top 90% (excludes only the least
-  popular decile) — computed once at startup (or once per request, for a year-filtered
-  search) as a percentile rank, so filtering is a threshold check, not a re-rank.
+  popular decile) — computed once at startup (or once per request, for a year- or
+  sex/sector-filtered search) as a percentile rank, so filtering is a threshold check, not a
+  re-rank.
 - **Sort**: most similar (default) or most different — same ranking, walked from the other
   end, useful for finding names that deliberately *don't* resemble your liked names.
 
 The scatter plot colors suggestions by sex (blue/pink) and sizes each point by real-world
 popularity (a Recharts `ZAxis` bubble channel), with a legend and a richer tooltip (name,
-similarity, sex, popularity). **Liked (selected) names render as large stars with a white
-outline and their name printed above them** — deliberately not tied to the popularity size
-scale, so they never blend into the suggestion bubbles around them. The footer links to the
-full name list (`/names.csv`, a static copy of the corpus) and, once set, `VITE_GITHUB_URL`
-for a source-code link.
+similarity, sex, popularity). **Liked (selected) names render as large black stars, each
+inside a soft grey halo ring, with their name printed above them** — deliberately not tied
+to the popularity size scale, so they never blend into the suggestion bubbles around them.
+The footer links to three places: the full name list (`/names.csv`, a static copy of the
+corpus), the upstream `babynamesIL` data-source repo (see `DATA_SOURCE.md`), and — via
+`VITE_GITHUB_URL`, defaulted in `frontend/.env.example` to this project's real repo — the
+source code on GitHub.
 
 ## The two similarity models
 
@@ -222,7 +234,10 @@ becomes a real problem in practice.
 backend/              FastAPI service serving the embedding/search/autocomplete API
 backend/notebooks/    Manual ML sanity-check Jupyter notebook (real code, real artifacts)
 frontend/             React + TypeScript + Vite single-page app
-PLAN.md               Living implementation plan (Phase 1 = MVP, Phase 2 = second model — both done)
+scripts/              Repo-level scripts (currently: post-deploy verification)
+PLAN.md               Living implementation plan (build phases 1-7 -- all done so far)
+DEPLOYMENT_PLAN.md    Step-by-step plan for the (not-yet-executed) Render + Vercel deploy
+render.yaml           Render Blueprint for the backend service (see DEPLOYMENT_PLAN.md)
 ```
 
 See `backend/README.md` and `frontend/README.md` for per-service details.
@@ -233,6 +248,86 @@ See `backend/README.md` and `frontend/README.md` for per-service details.
 cd backend && uv run pytest && uv run ruff check .
 cd frontend && npm run test && npm run lint && npx tsc -b
 ```
+
+## CI/CD
+
+**CI (automated testing) is live today.** **CD (automated deployment) is wired but
+dormant** — it activates the moment the backend/frontend are actually connected to
+Render/Vercel (see [Deployment](#deployment) below), with no extra setup needed at that
+point. The two pieces are **not sequenced together yet** — see "The gap" below.
+
+```mermaid
+flowchart TD
+    Push["git push / PR<br/>to main"]
+
+    Push -->|"paths: backend/**"| BCI["backend-ci.yml<br/>(GitHub Actions)"]
+    Push -->|"paths: frontend/**"| FCI["frontend-ci.yml<br/>(GitHub Actions)"]
+
+    BCI --> B1["uv sync --all-extras<br/>(dev group only -- no torch/transformers)"]
+    B1 --> B2["ruff check ."]
+    B2 --> B3["pytest"]
+
+    FCI --> F1["npm ci"]
+    F1 --> F2["npm run lint (oxlint)"]
+    F2 --> F3["npx tsc -b"]
+    F3 --> F4["npm run test (vitest)"]
+    F4 --> F5["npm run build"]
+
+    Push -.->|"not connected yet -- see Deployment"| Render[["Render:<br/>Docker build + deploy<br/>(render.yaml, autoDeploy: true)"]]
+    Push -.->|"not connected yet -- see Deployment"| Vercel[["Vercel:<br/>Vite build + deploy<br/>(Git integration)"]]
+```
+
+### CI: `.github/workflows/{backend,frontend}-ci.yml`
+
+Two independent workflows, split by service and **path-filtered** so each only runs when
+its own half of the repo actually changed (a frontend-only PR doesn't spin up a Python job,
+and vice versa) — both trigger on every push to `main` and every pull request:
+
+- **`backend-ci.yml`**: `uv sync --all-extras` (installs the default + `dev` dependency
+  group only — `--all-extras` refers to `[project.optional-dependencies]`, which this
+  project doesn't use; the heavy `export`/`notebook` groups live under `[dependency-groups]`
+  and are never pulled in here), then `ruff check .`, then `pytest`.
+- **`frontend-ci.yml`**: `npm ci`, then lint (`oxlint`), typecheck (`tsc -b`), unit tests
+  (`vitest`), and a production build — the same four checks this README's
+  [Testing](#testing) section runs locally, in the same order, so "CI is green" and "I ran
+  the local one-liner" mean the same thing.
+
+**Known gap in CI itself, not just CD**: `cultural_similarity/model_quantized.onnx` (~112MB)
+is excluded from git (see [Deployment](#deployment)/`DEPLOYMENT_PLAN.md`) — GitHub Actions
+checks out the same repo, so it's missing there too. 5 backend tests that exercise the live
+ONNX encode path (`tests/embedding/test_onnx_sentence.py`, one case in
+`tests/test_search_service.py`) fail as a result — same failures reproducible locally today,
+not a CI-only issue. This makes `backend-ci` an unreliable merge gate until it's fixed, and
+needs the same fix `DEPLOYMENT_PLAN.md` proposes for the Dockerfile (host the file
+somewhere fetchable, e.g. a GitHub Release asset) applied to the CI workflow too, so the
+runner can download it before running `pytest`.
+
+### CD: Render + Vercel's own Git integration — no custom pipeline needed
+
+Neither platform needs a hand-written deploy workflow: `render.yaml` (repo root) has
+`autoDeploy: true`, and Vercel's GitHub integration auto-deploys on every push by default.
+Once `DEPLOYMENT_PLAN.md`'s Step 1/2 are done (connecting each platform to this repo), every
+push to `main` triggers both a GitHub Actions test run **and**, independently, a Render/Vercel
+rebuild-and-deploy — no secrets, deploy hooks, or extra YAML required to get *a* CD loop
+running.
+
+### The gap: CI and CD are two independent reactions to the same push, not one pipeline
+
+Today (once connected) both fire in parallel off the same `git push` — a red test run
+would **not** block a deploy, since Render/Vercel don't know or care what GitHub Actions
+reported. Two ways to close that, in order of recommendation for a solo-dev project on free
+tiers:
+
+1. **Branch protection** (recommended, no extra YAML): require `backend-ci`/`frontend-ci` as
+   passing status checks before a PR can merge into `main`. Since both platforms only deploy
+   from `main`, this means anything actually reachable to deploy was already tested. Doesn't
+   protect a direct push to `main` (no PR) — acceptable for how this repo is used today.
+2. **Actions-driven deploy**: turn off `autoDeploy`, add a `deploy` job to each CI workflow
+   gated on the test job succeeding, and call Render's deploy-hook URL / the Vercel CLI with
+   a token stored as a GitHub secret. A real "tests must pass, *then* deploy" pipeline, at
+   the cost of managing deploy-hook secrets and losing each platform's own deploy-preview UI.
+
+Neither is implemented yet — this section documents the design, not a finished pipeline.
 
 ## Manual ML sanity check
 
@@ -250,6 +345,8 @@ See `backend/notebooks/README.md` for what's in it.
 
 ## Deployment
 
+See [CI/CD](#cicd) for how testing and deployment relate to each other in this repo.
+
 - **Backend**: Docker image (`backend/Dockerfile`), designed for a free-tier host like
   [Render](https://render.com) as a web service. Set `CORS_ORIGINS` to your deployed
   frontend URL. The `export` dependency group (torch/transformers/optimum) is never
@@ -263,9 +360,27 @@ the frontend shows a "waking up..." message during this window. (2) See the memo
 table above — a free tier around 512MB fits the typical case but not the `cultural_similarity`
 worst case.
 
-**Not yet deployed** — the app is deployment-ready but hasn't been pushed to Render/Vercel
-yet (needs account access). Docker build itself is also unverified (no Docker daemon
-available in the sandbox this was built in) — worth a test build before deploying.
+```bash
+# Build + run the production Docker image locally and smoke-test it (from repo root)
+./backend/scripts/docker_smoke_test.sh
+
+# After deploying (see DEPLOYMENT_PLAN.md), verify the live URLs end to end
+BACKEND_URL=https://<render-url> FRONTEND_URL=https://<vercel-url> ./scripts/verify_deployment.sh
+```
+
+**Not yet deployed** — the app is deployment-ready (Docker build verified: builds, runs, and
+serves real traffic at ~230MB idle — see `DEPLOYMENT_PLAN.md`) but hasn't been pushed to
+Render/Vercel yet (needs account access). **`DEPLOYMENT_PLAN.md` has the full step-by-step
+plan**, including one real open item (the `cultural_similarity` ONNX model's ~112MB file
+isn't in git — GitHub's blob size limit — and needs a hosting decision before that model's
+live-encode path works in production).
+
+
+## Future plans
+1. Sequence CI and CD together (branch protection or Actions-driven deploy — see
+   [CI/CD](#cicd)), and fix the ONNX-file gap that currently makes `backend-ci` unreliable.
+2. Add another embedding model, once one of the two above lands, so it ships through a CI
+   gate rather than a manual local test run.
 
 ## License
 

@@ -84,6 +84,28 @@ def combos_match(combos: set[tuple[str, str]], sex: str, sector: str) -> bool:
     )
 
 
+def _filter_rows(df: pd.DataFrame, sex: str, sector: str) -> pd.DataFrame:
+    """Rows matching the sex/sector filter ("any" side matches everything).
+
+    Narrowing the *source rows* before aggregating (rather than aggregating
+    over everything and only checking row existence afterwards) is what
+    makes a suggestion's displayed metadata reflect the active filter: e.g.
+    a sex=F search on a name that's mostly given to boys but also to many
+    girls (a real case -- see test_corpus_store.py) shows that name's
+    female-only count and `sex="F"`, not its overall (sex-mixed) dominant
+    values -- which previously made girls-filtered searches visibly surface
+    "boys" on the chart.
+    """
+    if sex == "any" and sector == "any":
+        return df
+    mask = pd.Series(True, index=df.index)
+    if sex != "any":
+        mask &= df["sex"] == sex
+    if sector != "any":
+        mask &= df["sector"] == sector
+    return df.loc[mask]
+
+
 @dataclass
 class CorpusStore:
     """Shared corpus metadata + every loaded model's ModelStore."""
@@ -122,34 +144,49 @@ class CorpusStore:
         )
 
     def full_meta(self) -> dict[str, dict]:
-        """The complete (all-years) per-name metadata dict -- same shape as
-        `year_filtered_meta()`'s return value, so callers can pick either
-        source and treat it uniformly (see services/search_service.py).
+        """The complete (all-years, no sex/sector narrowing) per-name
+        metadata dict -- same shape as `year_filtered_meta()`'s and
+        `sex_sector_filtered_meta()`'s return values, so callers can pick
+        whichever source fits and treat it uniformly (see
+        services/search_service.py).
         """
         return self._meta_by_name
+
+    def sex_sector_filtered_meta(self, sex: str, sector: str) -> dict[str, dict]:
+        """Per-name metadata from the full (all-years) corpus, narrowed to
+        rows matching `sex`/`sector` (see `_filter_rows`) before
+        aggregating -- so e.g. a sex=F search shows a unisex name's
+        female-only count and `sex="F"`, not its overall dominant values.
+        """
+        return _compute_meta(_filter_rows(self.names_df, sex, sector))
 
     def matches_sex_sector(self, name: str, sex: str, sector: str) -> bool:
         """True if `name` has at least one real (sex, sector) row matching
         both filters (either side of "any" matches anything) -- see
-        `combos_match`. Uses the full (all-years) metadata; for a
-        year-filtered view use `year_filtered_meta()` + `combos_match`
-        directly instead (see services/search_service.py).
+        `combos_match`. Uses the full (all-years) metadata; for a live
+        search, `sex_sector_filtered_meta()`/`year_filtered_meta()` are
+        used instead, since they also narrow the *displayed* metadata to
+        the matching rows (see services/search_service.py).
         """
         return combos_match(self.meta_for(name)["combos"], sex, sector)
 
     def is_full_year_range(self, min_year: int, max_year: int) -> bool:
         return min_year <= self.year_min and max_year >= self.year_max
 
-    def year_filtered_meta(self, min_year: int, max_year: int) -> dict[str, dict]:
+    def year_filtered_meta(
+        self, min_year: int, max_year: int, sex: str = "any", sector: str = "any"
+    ) -> dict[str, dict]:
         """Per-name metadata computed from ONLY `years_df` rows within
-        [min_year, max_year]. Names with no yearly breakdown at all are
-        simply absent from the result -- callers should treat this dict as
-        the full candidate universe for a year-filtered search (a name
-        missing from it means "no evidence found in this range", not "look
-        it up elsewhere"), not fall back to `meta_for` for missing names.
+        [min_year, max_year], further narrowed to rows matching `sex`/
+        `sector` when given (default "any" = no narrowing -- see
+        `_filter_rows`). Names with no yearly breakdown at all are simply
+        absent from the result -- callers should treat this dict as the
+        full candidate universe for a year-filtered search (a name missing
+        from it means "no evidence found in this range", not "look it up
+        elsewhere"), not fall back to `meta_for` for missing names.
         """
         mask = (self.years_df["year"] >= min_year) & (self.years_df["year"] <= max_year)
-        return _compute_meta(self.years_df.loc[mask])
+        return _compute_meta(_filter_rows(self.years_df.loc[mask], sex, sector))
 
     def model(self, model_id: str) -> ModelStore:
         try:

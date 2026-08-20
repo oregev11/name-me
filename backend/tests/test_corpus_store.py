@@ -70,6 +70,32 @@ def test_percentile_is_between_0_and_1(store) -> None:
     assert 0.0 <= meta["percentile"] <= 1.0
 
 
+def test_sex_sector_filtered_meta_narrows_displayed_sex_and_total(store) -> None:
+    # UNISEX_NAME's overall dominant sex is M (more boys than girls), but a
+    # sex=F view must display it as F, with a total that's only the female
+    # count -- this is what fixed the girls-filter showing "boys" on the
+    # chart (see _filter_rows).
+    full = store.meta_for(UNISEX_NAME)
+    female_view = store.sex_sector_filtered_meta(sex="F", sector="any")[UNISEX_NAME]
+
+    assert full["sex"] == "M"
+    assert female_view["sex"] == "F"
+    assert 0 < female_view["total"] < full["total"]
+    assert {s for s, _sector in female_view["combos"]} == {"F"}
+
+
+def test_sex_sector_filtered_meta_any_any_matches_full_meta(store) -> None:
+    assert store.sex_sector_filtered_meta(sex="any", sector="any") == store.full_meta()
+
+
+def test_year_filtered_meta_sex_narrows_displayed_sex(store) -> None:
+    full_range_female = store.year_filtered_meta(
+        store.year_min, store.year_max, sex="F", sector="any"
+    )
+    if UNISEX_NAME in full_range_female:
+        assert full_range_female[UNISEX_NAME]["sex"] == "F"
+
+
 def test_overall_total_sums_across_sex_and_sector(store) -> None:
     meta = store.meta_for(UNISEX_NAME)
     combos = meta["combos"]

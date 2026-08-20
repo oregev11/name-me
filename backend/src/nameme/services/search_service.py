@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from nameme.corpus.loader import CorpusStore, ModelStore, combos_match
+from nameme.corpus.loader import CorpusStore, ModelStore
 from nameme.schemas.search import (
     NamePoint,
     PopularityFilter,
@@ -51,22 +51,38 @@ def _encode_liked_names(model: ModelStore, liked_names: list[str]) -> np.ndarray
 
 
 def _resolve_meta_source(
-    store: CorpusStore, year_min: int | None, year_max: int | None
+    store: CorpusStore,
+    sex: SexFilter,
+    sector: SectorFilter,
+    year_min: int | None,
+    year_max: int | None,
 ) -> dict[str, dict]:
-    """Picks which per-name metadata to filter/rank against: the full
-    (all-years) corpus metadata by default, or an on-the-fly metadata dict
-    computed from only the years within [year_min, year_max] when that's
-    narrower than the dataset's full span (a "ruler" year-range filter).
+    """Picks which per-name metadata to filter/rank/display against: the
+    full (all-years, unfiltered) corpus metadata when no filter narrows
+    anything, or an on-the-fly metadata dict aggregated from only the
+    matching rows otherwise (year range and/or sex/sector -- see
+    `CorpusStore.year_filtered_meta`/`sex_sector_filtered_meta`).
 
-    Computed ONCE per request (a single pandas groupby over the ~160K-row
-    year breakdown), not per-candidate -- the ranking loop below does O(1)
-    dict lookups against whichever dict this returns.
+    Narrowing the source rows -- rather than aggregating over everything
+    and only checking row *existence* against the filter -- is what makes
+    a suggestion's displayed sex/popularity reflect the active filter
+    (e.g. a sex=F search shows a mostly-boys name's female-only count and
+    `sex="F"`, not its overall dominant values).
+
+    Computed ONCE per request (a single pandas groupby, over at most the
+    ~160K-row year breakdown), not per-candidate -- the ranking loop below
+    does O(1) dict lookups against whichever dict this returns.
     """
     eff_min = year_min if year_min is not None else store.year_min
     eff_max = year_max if year_max is not None else store.year_max
-    if store.is_full_year_range(eff_min, eff_max):
+    full_range = store.is_full_year_range(eff_min, eff_max)
+    no_sex_sector_filter = sex == "any" and sector == "any"
+
+    if full_range and no_sex_sector_filter:
         return store.full_meta()
-    return store.year_filtered_meta(eff_min, eff_max)
+    if full_range:
+        return store.sex_sector_filtered_meta(sex, sector)
+    return store.year_filtered_meta(eff_min, eff_max, sex, sector)
 
 
 def search(
@@ -94,7 +110,7 @@ def search(
     ranked_idx = np.argsort(-similarities) if sort == "similar" else np.argsort(similarities)
 
     min_percentile = _POPULARITY_THRESHOLDS[popularity]
-    meta_source = _resolve_meta_source(store, year_min, year_max)
+    meta_source = _resolve_meta_source(store, sex, sector, year_min, year_max)
 
     suggestion_idx = []
     for idx in ranked_idx:
@@ -102,12 +118,12 @@ def search(
         if name in liked_set:
             continue
         meta = meta_source.get(name)
-        # Absent from a year-filtered meta_source means "no evidence this
-        # name was given within that range" -- excluded, not a fallback to
-        # the full-corpus metadata.
+        # Absent from meta_source means "no rows matching the active
+        # sex/sector/year filters" -- excluded, not a fallback to broader
+        # (e.g. full-corpus) metadata. meta_source is already narrowed to
+        # matching rows (see _resolve_meta_source), so no extra sex/sector
+        # check is needed here.
         if meta is None:
-            continue
-        if not combos_match(meta["combos"], sex, sector):
             continue
         if meta["percentile"] < min_percentile:
             continue

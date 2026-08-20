@@ -829,3 +829,265 @@ unisex Israeli name, dominant sex M) correctly appears in a `sex="F"`-filtered s
 - `backend/notebooks/ml_sanity_check.ipynb` (new)
 - `backend/notebooks/README.md` (new)
 - `backend/pyproject.toml` (new `notebook` dependency group)
+
+---
+
+# Phase 7: TASKS..md #7–9 — sex-filter display bug, slider drag, liked-marker styling
+
+**Status: DONE.**
+
+## Context
+
+`TASKS..md` filed three concrete bug reports/polish requests after Phase 5/6 shipped:
+
+- **#7**: "filter is not working properly. i filter for girls but also get boys on the
+  graph." — real, not a misunderstanding: `combos_match` (added in an earlier phase
+  specifically so a name like "דניאל" — dominant sex M, but also ~13K real girls — wouldn't
+  vanish under a `sex=F` filter) only checked row *existence*. The metadata actually
+  *displayed* for a passing name (dominant sex, total, sectors) still came from the
+  unfiltered, all-rows aggregate — so a girls-only search could legitimately surface a name
+  rendered with `sex="M"`, coloring it blue under the "boys" legend entry on a girls-only
+  search. `test_search.py`'s own `test_search_filters_by_sex` docstring already predicted and
+  excused this ("a name can pass a sex=F filter even when its *dominant* displayed sex is
+  M") — correct about the mechanism, wrong about it being acceptable.
+- **#8**: "slider is bad. i can only move it one year at a time and not freely." — App.tsx
+  passes `disabled={loading}` to `YearRangeSlider`. Every native range-input step called
+  `onChange` synchronously → `setFilters` → `runSearch` → `setLoading(true)`, which flips the
+  input to `disabled` mid-gesture. A disabled `<input type="range">` drops the browser's
+  mouse capture, ending the drag right there — so every single one-year step killed its own
+  drag, and the user had to restart the gesture for each subsequent year.
+- **#9**: "make graph nicer. draw a grey circle arround the selected names and make this
+  icon black." — straightforward styling change to `LikedPointShape`.
+
+## What was built
+
+- **#7 fix** (`backend/src/nameme/corpus/loader.py`, `services/search_service.py`): added
+  `_filter_rows()` (narrows a dataframe to rows matching the active sex/sector filter,
+  "any" matching everything) and used it *before* aggregating metadata, not just for a
+  post-hoc existence check. New `CorpusStore.sex_sector_filtered_meta()` (full year range +
+  sex/sector filter) alongside the extended `year_filtered_meta(..., sex, sector)` (both year
+  *and* sex/sector filters combined). `search_service._resolve_meta_source` now picks among
+  four cases (no filter / sex-sector only / year only / both) instead of two, and the
+  now-redundant per-candidate `combos_match` check was removed from the ranking loop — a
+  name present in a filtered `meta_source` is already guaranteed to match by construction.
+  Net effect: a `sex=F` search shows every matching name with `sex="F"` and its female-only
+  popularity count, never its unfiltered dominant values. `matches_sex_sector`/`combos_match`
+  themselves are unchanged (still correct, still used directly by tests and available for
+  existence-only checks) — only where/how their result gets used to build display metadata
+  changed.
+- **#8 fix** (`frontend/src/components/YearRangeSlider.tsx`): the component now keeps a
+  local `[from, to]` copy that updates instantly on every drag step (so the fill/label track
+  the pointer with zero lag), while the actual `onChange` call up to the parent — the one
+  that triggers a network search and flips `disabled` — is debounced 300ms after the last
+  move. A whole drag across decades is now one uninterrupted gesture with a single search
+  firing once it settles, instead of one search (and one dropped-capture interruption) per
+  year. Local state resyncs from the `value` prop keyed on the numeric bounds specifically
+  (not the array reference), so an unrelated parent re-render mid-drag can't snap the handle
+  back to a stale position.
+- **#9 fix** (`frontend/src/components/ScatterChart.tsx`, `styles/global.css`): `--liked`
+  changed from pink (`#d6336c`) to near-black (`#111827`); added `--liked-ring`/
+  `--liked-ring-fill` (grey stroke/soft-fill) for a new `<circle r=18>` drawn behind each
+  liked-name star in `LikedPointShape`, sized to clearly enclose the star's own radius (13).
+
+## Testing
+
+`test_corpus_store.py` gained 3 tests exercising `sex_sector_filtered_meta`/
+`year_filtered_meta`'s new narrowing directly against the real "דניאל" unisex-name edge case
+(displayed sex flips M→F, total shrinks to the female-only count, combos collapse to
+`{"F"}`). `test_search.py`'s `test_search_filters_by_sex` gained a direct assertion that
+every `sex=F`-filtered suggestion's `sex` field is actually `"F"` (previously only asserted
+the result *set* changed, per its own docstring's caveat — now the caveat is gone because
+the bug it described is fixed). `YearRangeSlider.test.tsx` switched to Vitest fake timers:
+existing clamping tests now assert `onChange` is debounced (not called until timers run),
+plus a new test asserting the label updates immediately on each step regardless, and a new
+regression test firing 5 rapid drag steps and asserting `onChange` fires exactly once, with
+the final settled value — the direct regression check for #8.
+
+## Verification — all done
+
+- ✅ Backend: `uv run pytest` — 43 passed, 1 xfailed (the 5 pre-existing ONNX-model-file
+  failures are unrelated: `model_quantized.onnx` was deliberately excluded from git for size
+  in an earlier commit, not caused by this change). `ruff check .` clean (one pre-existing,
+  unrelated notebook line-length warning).
+- ✅ Frontend: `npm run test` — 21 passed (5 new). `npx tsc -b` clean. `npm run lint`
+  (oxlint) clean.
+
+### Critical files
+
+- `backend/src/nameme/corpus/loader.py`
+- `backend/src/nameme/services/search_service.py`
+- `backend/tests/test_corpus_store.py`
+- `backend/tests/test_search.py`
+- `frontend/src/components/YearRangeSlider.tsx`
+- `frontend/tests/YearRangeSlider.test.tsx`
+- `frontend/src/components/ScatterChart.tsx`
+- `frontend/src/styles/global.css`
+
+---
+
+# Phase 8: GitHub/data-source links + deployment plan
+
+**Status: DONE** (footer links + Docker verification + deployment plan). **Actual
+Render/Vercel deployment: NOT done** — needs account access this environment doesn't have;
+see `DEPLOYMENT_PLAN.md` for the plan a human runs.
+
+## Context
+
+`TASKS..md` #10–12: a working GitHub repo link in the footer (the repo now has a real
+`origin`, `git@github.com:oregev11/name-me.git` — `VITE_GITHUB_URL` was previously
+opt-in/unset since there was no real URL yet), a link to the upstream name-data repo (Phase
+4's "add links to github and names list" only covered the source-code repo + the `/names.csv`
+static file, not the actual upstream data provenance), and a deployment plan (#12 was
+originally phrased "deploy online," then narrowed by the user to "create a plan for
+deployment" — this phase delivers the plan, not an executed deploy).
+
+## What was built
+
+- `frontend/.env.example`/`frontend/.env`: `VITE_GITHUB_URL` now defaults to the real repo
+  URL instead of being commented out.
+- `Footer.tsx`: added a third link, to `https://github.com/aviezerl/babynamesIL` (the
+  upstream data source per `DATA_SOURCE.md`) — hardcoded (not an env var like
+  `VITE_GITHUB_URL`), since it's a fixed citation independent of which fork/deployment is
+  running, not something a deployer would override.
+- `DEPLOYMENT_PLAN.md` (new): the full step-by-step plan — platform choice rationale
+  (Render backend/Vercel frontend, both already implied by the existing Dockerfile/README),
+  a pre-flight section, one real open blocker, 4 ordered deploy steps, costs/limits, and
+  rollback notes.
+- **Pre-flight verification, done as part of writing the plan** (Docker was unavailable in
+  the sandbox this backend was originally built in — see this file's "RAM verification"
+  section — but is available now): built `backend/Dockerfile`, ran the container, and hit
+  real endpoints. Confirmed: builds cleanly (~2min cold), starts cleanly, `/api/health`
+  reports both models loaded, `/api/search` returns correct results (including the sex-filter
+  fix from Phase 7, spot-checked inside the container too), idle RSS ~223–235MB (in line
+  with the ~250MB measured outside Docker previously), image size 892MB.
+- **Real blocker surfaced and documented** (not fixed — needs a decision): the
+  `cultural_similarity` model's `model_quantized.onnx` (~112MB) was excluded from git for
+  size in an earlier commit and doesn't exist anywhere deployable currently pulls from. Most
+  searches are unaffected (precomputed corpus vectors are committed and checked first), but
+  the live-encode path for a genuinely novel name under that model would 500 in production.
+  `DEPLOYMENT_PLAN.md` lays out 3 options (GitHub Release asset recommended, Git LFS,
+  build-time re-export) and asks for a decision before Step 1.
+- Two new scripts: `backend/scripts/docker_smoke_test.sh` (build+run+curl+cleanup, turns the
+  manual pre-flight check above into something re-runnable before every deploy) and
+  `scripts/verify_deployment.sh` (post-deploy check against live URLs — polls through
+  Render free tier's cold-start window rather than failing on first timeout; checks both
+  models, a real CORS preflight, and that the frontend actually serves the app).
+- `render.yaml` (new, repo root): a Render Blueprint so the backend service is defined
+  declaratively (Docker runtime, health check path, `CORS_ORIGINS` placeholder) instead of
+  hand-clicked through Render's dashboard.
+- README: fixed the now-stale "Docker build is unverified" line, added the two scripts'
+  one-liners, linked `DEPLOYMENT_PLAN.md`, updated the footer/project-layout descriptions.
+
+## Verification
+
+- ✅ `docker_smoke_test.sh` runs clean end to end (build, health check, search check, memory
+  check, teardown) — see script output captured while writing this phase.
+- ✅ Frontend: `npm run test` (21 passed, no Footer test existed to update), `tsc -b` clean,
+  `oxlint` clean.
+- Backend test suite unaffected (no backend logic changed this phase, only frontend +
+  deploy tooling/docs).
+
+### Critical files
+
+- `frontend/src/components/Footer.tsx`
+- `frontend/.env.example`
+- `DEPLOYMENT_PLAN.md` (new)
+- `render.yaml` (new)
+- `backend/scripts/docker_smoke_test.sh` (new)
+- `scripts/verify_deployment.sh` (new)
+
+---
+
+# Phase 9: README CI/CD documentation
+
+**Status: DONE.** Documentation only — no code changes.
+
+## Context
+
+User asked how CI/CD would work in this repo, then asked for that explanation to live in
+the README (per `CLAUDE.md`'s "documentation" rules: over-explain, include mermaid,
+update at every step). CI (`backend-ci.yml`/`frontend-ci.yml`) already existed from an
+earlier session but was undocumented in the README beyond a stale one-line "Future plans"
+bullet; CD was never wired up at all (no deployed targets yet — see `DEPLOYMENT_PLAN.md`).
+
+## What was built
+
+New `## CI/CD` README section (between Testing and Manual ML sanity check, cross-linked
+from Deployment and Future plans): a mermaid flowchart of the current push → path-filtered
+CI jobs → (dotted, "not connected yet") Render/Vercel deploy; a breakdown of each CI
+workflow's actual steps; and an explicit "the gap" callout that CI and CD are two
+independent reactions to the same push today, not one sequenced pipeline, with two ranked
+options to fix that (branch protection, recommended; Actions-driven deploy). Also surfaced
+and documented a concrete, previously-unrecorded finding: `backend-ci.yml` checks out the
+same repo that's missing `cultural_similarity/model_quantized.onnx`, so the same 5 ONNX
+-dependent test failures seen locally this session almost certainly also fail on GitHub's
+runners — making `backend-ci` an unreliable gate until the ONNX-hosting decision in
+`DEPLOYMENT_PLAN.md` is resolved and applied to CI too, not just the Dockerfile. Rewrote
+the stale "Future plans" bullet (previously conflated "add another model" with "CI/CD" as
+one item) into two accurate, ordered items.
+
+## Verification
+
+- Markdown structural check: all code fences balanced (18, even), all `#anchor` links
+  (`#cicd`, `#deployment`, `#testing`) match real headings via GitHub's slug rules.
+- New mermaid flowchart hand-verified against this same README's other diagrams' proven
+  syntax patterns (quoted edge labels via `-->|"..."|`, `[[...]]` subroutine-shape nodes,
+  `<br/>` line breaks) — no mermaid renderer was available in this environment to render it
+  directly (no network install attempted, to avoid re-triggering the sandboxed-network
+  prompt this session already hit once).
+
+### Critical files
+
+- `README.md`
+
+---
+
+# Phase 10: Over-explaining pass across all READMEs + per-service CI/CD detail
+
+**Status: DONE.** Documentation only — no code changes.
+
+## Context
+
+Following Phase 9 (root README CI/CD section), the user asked for all READMEs in the repo
+to be "over-explaining" and specifically for technical CI/CD detail, not just the root one.
+`backend/.pytest_cache/README.md` is pytest's own auto-generated file (not a real project
+doc) and was left alone.
+
+## What was built
+
+- `backend/README.md`: new `## CI/CD` section (backend-ci.yml's trigger/path-filter, exact
+  step-by-step breakdown including the `--all-extras`-doesn't-mean-`--all-groups` nuance,
+  an honest callout that there's no Python static-type-check step unlike the frontend's
+  `tsc -b`, the same ONNX-causes-5-CI-failures gap documented in the root README but with
+  the exact test names, and how it relates — or rather, doesn't yet relate — to Render CD).
+- `frontend/README.md`: new standalone `## Testing` section (previously only a bullet in
+  `## Scripts`) explaining *why* `npm run build` is part of the test sequence, not just
+  listing it; new `## CI/CD` section (frontend-ci.yml's steps, `npm ci` vs `npm install`,
+  and — the one genuinely new technical explanation, not just a restatement — that
+  `VITE_*` env vars are baked into the JS bundle at **build** time, so a Vercel dashboard
+  env-var edit does nothing until the next rebuild, unlike a backend service reading
+  `os.environ` per-request). Also updated the `Structure` section's component descriptions
+  to match this session's actual fixes (`YearRangeSlider`'s debounce mechanics and *why* it
+  exists, `ScatterChart`'s black-star-in-grey-halo styling, `Footer`'s third link).
+- `backend/notebooks/README.md`: small addition connecting to the CI/CD explanation above
+  (this notebook's dependency group is invisible to CI by design) and clarifying its
+  committed outputs are real, previously-executed results, not empty cells.
+
+## Verification
+
+- All four READMEs' fenced code blocks are balanced (even counts).
+- All new/existing cross-doc `#anchor` links (`#cicd`, `#offline-artifact-pipeline`,
+  `#memory-footprint-why-this-matters-for-free-tier-hosting`,
+  `#data-flow-one-search-request-end-to-end`) hand-verified against GitHub's slug rules and
+  each target file's real headings, including relative-path correctness (e.g.
+  `backend/notebooks/README.md`'s `../README.md` correctly resolves to `backend/README.md`,
+  not repo root, given its own nesting depth).
+- Frontend regression check (no source changed, but run anyway since `README.md` content
+  now describes real component behavior precisely): `npm run test` (21 passed), `tsc -b`
+  clean, `oxlint` clean.
+
+### Critical files
+
+- `backend/README.md`
+- `frontend/README.md`
+- `backend/notebooks/README.md`

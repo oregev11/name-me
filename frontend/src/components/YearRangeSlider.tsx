@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 interface Props {
   min: number;
   max: number;
@@ -5,6 +7,16 @@ interface Props {
   onChange: (value: [number, number]) => void;
   disabled: boolean;
 }
+
+// How long to wait, after the user stops moving a handle, before actually
+// calling `onChange` (which triggers a search and flips `disabled` while
+// it's in flight). Without this, EVERY single one-year step fired its own
+// search -- and disabling the input mid-drag drops the browser's mouse
+// capture, ending the drag right there. That's what made the slider only
+// ever move "one year at a time" (see TASKS..md #8): each step killed its
+// own gesture. Debouncing means a whole drag across decades stays one
+// fluid, uninterrupted gesture, with a single search firing once it settles.
+const COMMIT_DELAY_MS = 300;
 
 /**
  * A dual-handle "ruler" for picking a year range. Built from two native
@@ -19,7 +31,32 @@ export function YearRangeSlider({
   onChange,
   disabled,
 }: Props) {
-  const [from, to] = value;
+  // Local copy, updated instantly on every drag step so the handles/fill/
+  // label always track the pointer -- `onChange` itself is debounced (see
+  // above), so it can't be what drives the visible position.
+  const [local, setLocal] = useState(value);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+
+  // Resync if the *bounds* change from outside (e.g. filters reset
+  // elsewhere) -- keyed on the values, not the array reference, so a
+  // parent re-render mid-drag (new array, same numbers) can't stomp on an
+  // uncommitted local drag.
+  useEffect(() => {
+    setLocal(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value[0], value[1]]);
+
+  useEffect(() => () => clearTimeout(commitTimer.current), []);
+
+  const commit = (next: [number, number]) => {
+    setLocal(next);
+    clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => onChange(next), COMMIT_DELAY_MS);
+  };
+
+  const [from, to] = local;
   const span = Math.max(max - min, 1);
   const pctFrom = ((from - min) / span) * 100;
   const pctTo = ((to - min) / span) * 100;
@@ -46,7 +83,7 @@ export function YearRangeSlider({
           max={max}
           value={from}
           disabled={disabled}
-          onChange={(e) => onChange([Math.min(Number(e.target.value), to), to])}
+          onChange={(e) => commit([Math.min(Number(e.target.value), to), to])}
         />
         <input
           type="range"
@@ -56,7 +93,7 @@ export function YearRangeSlider({
           value={to}
           disabled={disabled}
           onChange={(e) =>
-            onChange([from, Math.max(Number(e.target.value), from)])
+            commit([from, Math.max(Number(e.target.value), from)])
           }
         />
       </div>

@@ -78,9 +78,11 @@ function starPoints(
  * popularity-driven ZAxis size used for suggestions, so a liked name always
  * renders large and identical in size regardless of its own popularity.
  * Renders on top of suggestion bubbles (last in the JSX = top of SVG
- * z-order) with a white outline for contrast, plus the name printed right
- * above it so it's identifiable without hovering -- the whole point being
- * that liked/selected names should never be mistaken for a suggestion.
+ * z-order): a soft grey halo ring around a solid black star, with a white
+ * outline on the star for contrast against the halo, plus the name printed
+ * right above it so it's identifiable without hovering -- the whole point
+ * being that liked/selected names should never be mistaken for a
+ * suggestion, and should stand out at a glance as the "anchors" of the map.
  */
 function LikedPointShape(props: {
   cx?: number;
@@ -90,6 +92,14 @@ function LikedPointShape(props: {
   const { cx = 0, cy = 0, payload } = props;
   return (
     <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={18}
+        fill="var(--liked-ring-fill)"
+        stroke="var(--liked-ring)"
+        strokeWidth={1.5}
+      />
       <polygon
         points={starPoints(cx, cy, 13, 5.5)}
         fill="var(--liked)"

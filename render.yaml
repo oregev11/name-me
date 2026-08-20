@@ -1,0 +1,22 @@
+# Render Blueprint for the backend -- see DEPLOYMENT_PLAN.md.
+#
+# Usage: Render dashboard -> New -> Blueprint -> pick this repo. Render
+# reads this file automatically (must live at the repo root) and proposes
+# the service below instead of you clicking through manual setup.
+#
+# CORS_ORIGINS below is a placeholder (this project's expected Vercel URL,
+# per frontend/.env.example) -- update it via the Render dashboard once the
+# frontend is actually deployed and its real URL is known (see
+# DEPLOYMENT_PLAN.md step 3), then it redeploys automatically.
+services:
+  - type: web
+    name: nameme-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: CORS_ORIGINS
+        value: https://name-me.vercel.app

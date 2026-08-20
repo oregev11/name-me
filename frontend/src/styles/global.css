@@ -6,7 +6,9 @@
   --border: #e5e4e7;
   --accent: #7c3aed;
   --accent-soft: rgba(124, 58, 237, 0.12);
-  --liked: #d6336c;
+  --liked: #111827;
+  --liked-ring: #9ca3af;
+  --liked-ring-fill: rgba(156, 163, 175, 0.16);
   --shadow: rgba(0, 0, 0, 0.08) 0 4px 16px;
   --radius: 12px;
 

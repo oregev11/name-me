@@ -83,11 +83,6 @@ def test_search_default_top_k_is_20(client: TestClient) -> None:
 
 
 def test_search_filters_by_sex(client: TestClient) -> None:
-    # Wiring-level test: the filter is applied and changes the result set.
-    # Exact per-item correctness (a name can pass a sex=F filter even when
-    # its *dominant* displayed sex is M, e.g. mostly-boys names still given
-    # to many girls) is covered precisely in test_corpus_store.py, since
-    # the API response's `sex` field alone can't prove that from here.
     unfiltered = client.post(
         "/api/search", json={"liked_names": ["דוד"], "top_k": 15, "sex": "any"}
     ).json()["suggestions"]
@@ -98,6 +93,12 @@ def test_search_filters_by_sex(client: TestClient) -> None:
     filtered_suggestions = filtered.json()["suggestions"]
     assert len(filtered_suggestions) > 0
     assert {s["name"] for s in filtered_suggestions} != {s["name"] for s in unfiltered}
+    # Every suggestion's displayed sex must match the filter -- even a name
+    # that's mostly given to boys but also to many girls (see
+    # test_corpus_store.py's UNISEX_NAME) must show up as "F" here, not its
+    # overall dominant sex, or the chart would visibly show "boys" under a
+    # girls-only filter.
+    assert all(s["sex"] == "F" for s in filtered_suggestions)
 
 
 def test_search_filters_by_sector(client: TestClient) -> None:

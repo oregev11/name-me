@@ -20,7 +20,14 @@ any section, edit the names/filters, and re-run just that cell.
 
 The `notebook` dependency group (`jupyterlab`, `ipykernel`, `matplotlib`) is separate from
 the app's runtime and `dev` dependencies — same pattern as the `export` group used for the
-offline ONNX model export — so it never ends up in the deployed image or CI.
+offline ONNX model export — so it never ends up in the deployed image or CI. Concretely:
+`backend-ci.yml`'s `uv sync --all-extras` step (see the backend README's
+[CI/CD](../README.md#cicd) section) only ever installs the default + `dev` groups — this
+notebook and its dependencies are simply invisible to CI, by design, not by accident. That
+also means this notebook is never executed automatically anywhere — it's a manual tool, run
+by hand and committed **with its cell outputs already in it** (`jupyter execute --inplace`
+was run once before committing), so the numbers you see in the file on GitHub are real,
+previously-produced results, not empty cells waiting to be run.
 
 ## What's in it
 
